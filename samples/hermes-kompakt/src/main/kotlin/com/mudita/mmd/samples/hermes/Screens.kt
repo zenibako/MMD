@@ -64,6 +64,7 @@ fun SessionsScreen(
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
     val inbox by Inbox.items.collectAsState()
+    val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
     val unread = inbox.count { !it.read }
 
     fun refresh() = scope.launch {
@@ -113,7 +114,7 @@ fun SessionsScreen(
                 ) {
                     TextMMD(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     TextMMD(
-                        listOf(s.source, s.updated).filter { it.isNotBlank() }.joinToString(" · "),
+                        listOf(s.source, formatUpdated(s.updated, fmt)).filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -326,3 +327,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     )
 }
+
+/** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those as a date, else as given. */
+private fun formatUpdated(raw: String, fmt: DateFormat): String =
+    raw.toDoubleOrNull()?.let { fmt.format(Date((it * 1000).toLong())) } ?: raw
