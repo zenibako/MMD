@@ -100,6 +100,9 @@ class NtfyListenerService : Service() {
     private fun handle(o: JSONObject, s: HermesSettings) {
         if (o.optString("event") != "message") return
         val tags = o.optJSONArray("tags")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+        // Hermes tags everything it publishes with its echo tag. Anything else on the topic
+        // (your own posts from another ntfy client) is a message *to* the agent, not for the Inbox.
+        if (HERMES_TAG !in tags) return
         val item = InboxItem(
             id = o.optString("id"),
             time = o.optLong("time") * 1000,
@@ -115,6 +118,7 @@ class NtfyListenerService : Service() {
 
     companion object {
         private const val TAG = "HermesNtfy"
+        private const val HERMES_TAG = "hermes-agent"
 
         fun start(context: Context) {
             if (!SettingsStore.load(context).isNtfyConfigured) return
