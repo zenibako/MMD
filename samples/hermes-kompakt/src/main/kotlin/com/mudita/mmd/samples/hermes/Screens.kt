@@ -50,7 +50,7 @@ import java.util.Date
 
 @Composable
 fun SessionsScreen(
-    onOpen: (sessionId: String, title: String, profileSlug: String) -> Unit,
+    onOpen: (sessionId: String, title: String, profileSlug: String, source: String) -> Unit,
     onInbox: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -98,7 +98,7 @@ fun SessionsScreen(
             ButtonMMD(onClick = {
                 scope.launch {
                     runCatching { client.createSession("From Kompakt") }
-                        .onSuccess { onOpen(it, "From Kompakt", client.profile.slug) }
+                        .onSuccess { onOpen(it, "From Kompakt", client.profile.slug, "api_server") }
                         .onFailure { status = "Could not start a session: ${it.message}" }
                 }
             }) { TextMMD("New") }
@@ -110,11 +110,15 @@ fun SessionsScreen(
         LazyColumnMMD(Modifier.fillMaxSize()) {
             items(sessions, key = { it.id }) { s ->
                 Column(
-                    Modifier.fillMaxWidth().clickable { onOpen(s.id, s.title, client.profile.slug) }.padding(16.dp),
+                    Modifier.fillMaxWidth().clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }.padding(16.dp),
                 ) {
                     TextMMD(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     TextMMD(
-                        listOf(s.source, formatUpdated(s.updated, fmt)).filter { it.isNotBlank() }.joinToString(" · "),
+                        listOf(
+                            s.source,
+                            if (s.isReadOnly) "read-only" else "",
+                            formatUpdated(s.updated, fmt),
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -125,7 +129,15 @@ fun SessionsScreen(
 }
 
 @Composable
-fun ChatScreen(sessionId: String, title: String, profileSlug: String, onBack: () -> Unit) {
+fun ChatScreen(
+    sessionId: String,
+    title: String,
+    profileSlug: String,
+    source: String,
+    onOpenSession: (sessionId: String, title: String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val readOnly = isReadOnlySource(source)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember {
@@ -160,7 +172,8 @@ fun ChatScreen(sessionId: String, title: String, profileSlug: String, onBack: ()
                 client.chatStream(sessionId, text).collect { e ->
                     when (e) {
                         // Show which tool is running, but don't repaint per token.
-                        is ChatEvent.Tool -> working = "Working: ${e.name}…"
+                        is ChatEvent.Tool ->
+                            working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
                         is ChatEvent.Done -> {
                             e.finalText?.let { messages.add(ChatMessage("assistant", it)) }
                             working = null
@@ -169,7 +182,13 @@ fun ChatScreen(sessionId: String, title: String, profileSlug: String, onBack: ()
                         is ChatEvent.Delta -> Unit
                     }
                 }
-            }.onFailure { working = "Send failed: ${it.message}" }
+            }.onFailure {
+                working = if ((it as? HermesApiException)?.code == 409) {
+                    "This session belongs to another surface. Use Continue here."
+                } else {
+                    "Send failed: ${it.message}"
+                }
+            }
         }
     }
 
@@ -192,16 +211,32 @@ fun ChatScreen(sessionId: String, title: String, profileSlug: String, onBack: ()
             }
         }
         working?.let { TextMMD(it, modifier = Modifier.padding(horizontal = 16.dp)) }
-        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextFieldMMD(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { TextMMD("Message your agent") },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { send() }),
-            )
-            ButtonMMD(onClick = { send() }) { TextMMD("Send") }
+        if (readOnly) {
+            // Hermes refuses API turns on sessions owned by cron, kanban or messaging; fork instead.
+            Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextMMD("Started from $source, so it's read-only here.")
+                ButtonMMD(onClick = {
+                    working = "Copying…"
+                    scope.launch {
+                        val newTitle = "$title (Kompakt)"
+                        runCatching { client.forkSession(sessionId, newTitle) }
+                            .onSuccess { onOpenSession(it, newTitle) }
+                            .onFailure { working = "Could not continue: ${it.message}" }
+                    }
+                }) { TextMMD("Continue here") }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextFieldMMD(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { TextMMD("Message your agent") },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { send() }),
+                )
+                ButtonMMD(onClick = { send() }) { TextMMD("Send") }
+            }
         }
     }
 }

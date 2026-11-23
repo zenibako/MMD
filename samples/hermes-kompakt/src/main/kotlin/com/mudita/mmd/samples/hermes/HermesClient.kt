@@ -20,7 +20,12 @@ data class SessionSummary(
     val title: String,
     val updated: String,
     val source: String,
-)
+) {
+    val isReadOnly: Boolean get() = isReadOnlySource(source)
+}
+
+/** Hermes lets API clients continue only sessions from these sources; the rest are read-only. */
+fun isReadOnlySource(source: String): Boolean = source.isNotBlank() && source !in setOf("api_server", "bot_room")
 
 data class ChatMessage(
     val role: String,
@@ -30,7 +35,7 @@ data class ChatMessage(
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
 sealed interface ChatEvent {
     data class Delta(val text: String) : ChatEvent
-    data class Tool(val name: String, val phase: String) : ChatEvent
+    data class Tool(val name: String, val phase: String, val detail: String = "") : ChatEvent
     data class Done(val finalText: String?) : ChatEvent
     data class Failed(val reason: String) : ChatEvent
 }
@@ -92,6 +97,18 @@ class HermesClient(
         }.filter { it.id.isNotBlank() }
     }
 
+    /**
+     * Copies a session into a new API-owned one. Hermes only lets the API continue sessions
+     * whose source is `api_server` or `bot_room`; forking is how a cron, kanban or messaging
+     * conversation is carried on from the phone.
+     */
+    suspend fun forkSession(sessionId: String, title: String): String = withContext(Dispatchers.IO) {
+        val body = requestOk("POST", "/api/sessions/${enc(sessionId)}/fork", JSONObject().put("title", title))
+        val o = JSONObject(body)
+        (o.optJSONObject("session")?.str("id", "session_id")?.takeIf { it.isNotBlank() } ?: o.str("id", "session_id", "new_session_id"))
+            .ifBlank { throw IOException("Fork response had no session id: ${body.take(200)}") }
+    }
+
     suspend fun createSession(title: String): String = withContext(Dispatchers.IO) {
         val body = requestOk("POST", "/api/sessions", JSONObject().put("title", title))
         val o = JSONObject(body)
@@ -133,6 +150,14 @@ class HermesClient(
                     }
                     "tool.started", "tool.completed", "tool.failed" ->
                         emit(ChatEvent.Tool(data.str("name", "tool"), e.event.substringAfter('.')))
+                    // Named progress frames (platforms.api_server.tool_progress_events).
+                    "hermes.tool.progress" -> emit(
+                        ChatEvent.Tool(
+                            name = data.str("name", "tool", "tool_name").ifBlank { "tool" },
+                            phase = "progress",
+                            detail = data.str("message", "status", "summary", "label"),
+                        ),
+                    )
                     "run.completed" -> {
                         val final = data.str("output", "final", "text", "content").ifBlank { text.toString() }
                         emit(ChatEvent.Done(final))

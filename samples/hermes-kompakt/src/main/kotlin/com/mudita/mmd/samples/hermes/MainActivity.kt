@@ -19,7 +19,12 @@ import com.mudita.mmd.ThemeMMD
 
 sealed interface Screen {
     data object Sessions : Screen
-    data class Chat(val sessionId: String, val title: String, val profileSlug: String) : Screen
+    data class Chat(
+        val sessionId: String,
+        val title: String,
+        val profileSlug: String,
+        val source: String = "",
+    ) : Screen
     data object Inbox : Screen
     data object Settings : Screen
 }
@@ -59,11 +64,18 @@ private fun App(start: Screen) {
     BackHandler(enabled = screen != Screen.Sessions) { screen = Screen.Sessions }
     when (val s = screen) {
         Screen.Sessions -> SessionsScreen(
-            onOpen = { id, title, profile -> screen = Screen.Chat(id, title, profile) },
+            onOpen = { id, title, profile, source -> screen = Screen.Chat(id, title, profile, source) },
             onInbox = { screen = Screen.Inbox },
             onSettings = { screen = Screen.Settings },
         )
-        is Screen.Chat -> ChatScreen(s.sessionId, s.title, s.profileSlug, onBack = { screen = Screen.Sessions })
+        is Screen.Chat -> ChatScreen(
+            sessionId = s.sessionId,
+            title = s.title,
+            profileSlug = s.profileSlug,
+            source = s.source,
+            onOpenSession = { id, title -> screen = Screen.Chat(id, title, s.profileSlug) },
+            onBack = { screen = Screen.Sessions },
+        )
         Screen.Inbox -> InboxScreen(onBack = { screen = Screen.Sessions })
         Screen.Settings -> SettingsScreen(onDone = { screen = Screen.Sessions })
     }
