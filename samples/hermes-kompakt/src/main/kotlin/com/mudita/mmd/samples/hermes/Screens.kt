@@ -219,7 +219,8 @@ fun SettingsScreen(onDone: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
                     scope.launch {
-                        status = if (HermesClient(s).health()) "Hermes is reachable." else "No answer from Hermes."
+                        val result = HermesClient(s).healthCheck()
+                        status = if (result == "OK") "Hermes is reachable." else "No answer from Hermes: $result"
                     }
                 }) { TextMMD("Test") }
                 ButtonMMD(onClick = {

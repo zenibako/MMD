@@ -44,12 +44,20 @@ object SettingsStore {
 
     fun save(context: Context, s: HermesSettings) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("baseUrl", s.baseUrl.trim().trimEnd('/'))
+            .putString("baseUrl", normalizeUrl(s.baseUrl))
             .putString("apiKey", s.apiKey.trim())
-            .putString("ntfyServer", s.ntfyServer.trim().trimEnd('/'))
+            .putString("ntfyServer", normalizeUrl(s.ntfyServer))
             .putString("ntfyTopic", s.ntfyTopic.trim())
             .putString("ntfyToken", s.ntfyToken.trim())
             .putInt("urgentPriority", s.urgentPriority.coerceIn(1, 5))
             .apply()
     }
+}
+
+/** Trims, drops trailing slashes and defaults to `https://` when no scheme was typed. */
+fun normalizeUrl(raw: String): String {
+    val url = raw.trim().trimEnd('/')
+    if (url.isEmpty()) return url
+    val hasScheme = url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
+    return if (hasScheme) url else "https://$url"
 }

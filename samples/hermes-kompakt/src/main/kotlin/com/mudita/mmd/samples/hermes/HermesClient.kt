@@ -1,5 +1,6 @@
 package com.mudita.mmd.samples.hermes
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -46,8 +47,14 @@ class HermesApiException(val code: Int, message: String) : IOException(message)
  */
 class HermesClient(private val settings: HermesSettings) {
 
-    suspend fun health(): Boolean = withContext(Dispatchers.IO) {
-        runCatching { request("GET", "/health", auth = false).first in 200..299 }.getOrDefault(false)
+    /** Calls `GET /health` and returns "OK", "HTTP <code>" or the exception, for display. */
+    suspend fun healthCheck(): String = withContext(Dispatchers.IO) {
+        val result = runCatching { request("GET", "/health", auth = false).first }.fold(
+            onSuccess = { code -> if (code in 200..299) "OK" else "HTTP $code" },
+            onFailure = { e -> "${e.javaClass.simpleName}: ${e.message}" },
+        )
+        if (result != "OK") Log.w("Hermes", "Health check against ${normalizeUrl(settings.baseUrl)} failed: $result")
+        result
     }
 
     suspend fun listSessions(limit: Int = 30): List<SessionSummary> = withContext(Dispatchers.IO) {
@@ -122,7 +129,7 @@ class HermesClient(private val settings: HermesSettings) {
     // --- HTTP plumbing --------------------------------------------------------------
 
     private fun open(method: String, path: String, auth: Boolean = true): HttpURLConnection =
-        (URL(settings.baseUrl + path).openConnection() as HttpURLConnection).apply {
+        (URL(normalizeUrl(settings.baseUrl) + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
             readTimeout = 30_000
