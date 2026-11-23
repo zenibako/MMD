@@ -1,6 +1,7 @@
 package com.mudita.mmd.samples.hermes
 
 import android.util.Log
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -45,7 +46,12 @@ class HermesApiException(val code: Int, message: String) : IOException(message)
  * Response field names are parsed defensively because the session endpoints are not yet
  * documented with full JSON examples.
  */
-class HermesClient(private val settings: HermesSettings) {
+class HermesClient(
+    private val settings: HermesSettings,
+    /** Profile whose routes and key are used; the default profile uses the root routes. */
+    val profile: HermesProfile = settings.active,
+) {
+    private val prefix = if (profile.isDefault) "" else "/p/${URLEncoder.encode(profile.slug, "UTF-8")}"
 
     /** Calls `GET /health` and returns "OK", "HTTP <code>" or the exception, for display. */
     suspend fun healthCheck(): String = withContext(Dispatchers.IO) {
@@ -63,6 +69,7 @@ class HermesClient(private val settings: HermesSettings) {
      * default profile, which is shown as "Hermes". Null if it can't be fetched.
      */
     suspend fun profileName(): String? = withContext(Dispatchers.IO) {
+        ProfileNames.names[profile.slug]?.let { return@withContext it }
         runCatching {
             val id = arrayIn(requestOk("GET", "/v1/models"), "data").objects().firstOrNull()?.str("id").orEmpty()
             when {
@@ -70,7 +77,7 @@ class HermesClient(private val settings: HermesSettings) {
                 id == "hermes-agent" -> "Hermes"
                 else -> id
             }
-        }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
+        }.onSuccess { name -> name?.let { ProfileNames.names[profile.slug] = it } }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
     }
 
     suspend fun listSessions(limit: Int = 30): List<SessionSummary> = withContext(Dispatchers.IO) {
@@ -150,12 +157,13 @@ class HermesClient(private val settings: HermesSettings) {
     // --- HTTP plumbing --------------------------------------------------------------
 
     private fun open(method: String, path: String, auth: Boolean = true): HttpURLConnection =
-        (URL(normalizeUrl(settings.baseUrl) + path).openConnection() as HttpURLConnection).apply {
+        // /health is served once at the root; everything else is per profile.
+        (URL(normalizeUrl(settings.baseUrl) + (if (path == "/health") path else prefix + path)).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
             readTimeout = 30_000
             setRequestProperty("Accept", "application/json")
-            if (auth) setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
+            if (auth) setRequestProperty("Authorization", "Bearer ${profile.apiKey}")
         }
 
     private fun writeJson(conn: HttpURLConnection, body: JSONObject) {
@@ -188,6 +196,13 @@ class HermesClient(private val settings: HermesSettings) {
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+}
+
+/** Display names fetched from each profile's `/v1/models`, keyed by slug, for this process. */
+object ProfileNames {
+    val names = mutableStateMapOf<String, String>()
+
+    fun label(profile: HermesProfile): String = names[profile.slug] ?: profile.slug.ifEmpty { "Default" }
 }
 
 // --- JSON helpers -------------------------------------------------------------------

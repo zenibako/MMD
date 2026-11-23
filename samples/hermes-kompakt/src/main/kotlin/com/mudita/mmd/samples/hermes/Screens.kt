@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -49,15 +50,17 @@ import java.util.Date
 
 @Composable
 fun SessionsScreen(
-    onOpen: (String, String) -> Unit,
+    onOpen: (sessionId: String, title: String, profileSlug: String) -> Unit,
     onInbox: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val client = remember { HermesClient(SettingsStore.load(context)) }
-    var profile by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { profile = client.profileName() }
+    var settings by remember { mutableStateOf(SettingsStore.load(context)) }
+    // A new client (and session list) whenever the active profile changes.
+    val client = remember(settings.active) { HermesClient(settings) }
+    val profileName = ProfileNames.label(client.profile)
+    LaunchedEffect(client) { client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
     val inbox by Inbox.items.collectAsState()
@@ -68,15 +71,33 @@ fun SessionsScreen(
         status = runCatching { sessions = client.listSessions(); "" }
             .getOrElse { "Could not reach Hermes: ${it.message}" }
     }
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(client) {
+        sessions = emptyList()
+        refresh()
+    }
+
+    fun switchProfile() {
+        val all = settings.profiles
+        val next = all[(all.indexOf(settings.active) + 1) % all.size]
+        SettingsStore.setActiveProfile(context, next.slug)
+        settings = settings.copy(activeProfile = next.slug)
+    }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(title = { TextMMD(profile?.let { "$it sessions" } ?: "Agent sessions") })
+        TopAppBarMMD(
+            title = { TextMMD("$profileName sessions", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            actions = {
+                // Cycles through profiles; with only the default profile there is nothing to switch.
+                if (settings.profiles.size > 1) {
+                    OutlinedButtonMMD(onClick = { switchProfile() }) { TextMMD("Profile") }
+                }
+            },
+        )
         Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ButtonMMD(onClick = {
                 scope.launch {
                     runCatching { client.createSession("From Kompakt") }
-                        .onSuccess { onOpen(it, "From Kompakt") }
+                        .onSuccess { onOpen(it, "From Kompakt", client.profile.slug) }
                         .onFailure { status = "Could not start a session: ${it.message}" }
                 }
             }) { TextMMD("New") }
@@ -88,7 +109,7 @@ fun SessionsScreen(
         LazyColumnMMD(Modifier.fillMaxSize()) {
             items(sessions, key = { it.id }) { s ->
                 Column(
-                    Modifier.fillMaxWidth().clickable { onOpen(s.id, s.title) }.padding(16.dp),
+                    Modifier.fillMaxWidth().clickable { onOpen(s.id, s.title, client.profile.slug) }.padding(16.dp),
                 ) {
                     TextMMD(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     TextMMD(
@@ -103,12 +124,15 @@ fun SessionsScreen(
 }
 
 @Composable
-fun ChatScreen(sessionId: String, title: String, onBack: () -> Unit) {
+fun ChatScreen(sessionId: String, title: String, profileSlug: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val client = remember { HermesClient(SettingsStore.load(context)) }
-    var profile by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { profile = client.profileName() }
+    val client = remember {
+        val settings = SettingsStore.load(context)
+        HermesClient(settings, settings.profile(profileSlug))
+    }
+    val profileName = ProfileNames.label(client.profile)
+    LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
     var working by remember { mutableStateOf<String?>(null) }
@@ -157,7 +181,7 @@ fun ChatScreen(sessionId: String, title: String, onBack: () -> Unit) {
             items(messages) { m ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     TextMMD(
-                        if (m.role == "user") "You" else profile ?: "Agent",
+                        if (m.role == "user") "You" else profileName,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -224,7 +248,10 @@ fun SettingsScreen(onDone: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Field("Hermes URL", s.baseUrl) { s = s.copy(baseUrl = it) }
-            Field("API key (API_SERVER_KEY)", s.apiKey) { s = s.copy(apiKey = it) }
+            Field("API key (API_SERVER_KEY)", s.profiles.first().apiKey) { key ->
+                s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
+            }
+            ProfilesSection(s.profiles) { s = s.copy(profiles = it) }
             Field("ntfy server", s.ntfyServer) { s = s.copy(ntfyServer = it) }
             Field("ntfy topic", s.ntfyTopic) { s = s.copy(ntfyTopic = it) }
             Field("ntfy token (optional)", s.ntfyToken) { s = s.copy(ntfyToken = it) }
@@ -248,6 +275,45 @@ fun SettingsScreen(onDone: () -> Unit) {
             }
         }
     }
+}
+
+/** Extra profiles reached under `/p/<slug>/`; the default profile's key is the field above. */
+@Composable
+private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
+    var slug by remember { mutableStateOf("") }
+    var key by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+
+    TextMMD("Other profiles", fontWeight = FontWeight.Bold)
+    profiles.drop(1).forEach { p ->
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextMMD(
+                "${p.slug} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButtonMMD(onClick = { onChange(profiles - p) }) { TextMMD("Remove") }
+        }
+    }
+    Field("Profile name (as on the server)", slug) { slug = it.trim().lowercase() }
+    Field("That profile's API key", key) { key = it }
+    if (error.isNotBlank()) TextMMD(error)
+    OutlinedButtonMMD(onClick = {
+        error = when {
+            !isValidProfileSlug(slug) -> "Use the profile's name: lowercase letters, digits, - or _."
+            profiles.any { it.slug == slug } -> "That profile is already added."
+            key.isBlank() -> "Enter that profile's API key."
+            else -> {
+                onChange(profiles + HermesProfile(slug, key.trim()))
+                slug = ""
+                key = ""
+                ""
+            }
+        }
+    }) { TextMMD("Add profile") }
 }
 
 @Composable

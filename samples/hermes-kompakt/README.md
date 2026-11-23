@@ -75,8 +75,30 @@ hour; everything else is priority 3."*
 ## App setup
 
 Install the APK (`./gradlew :samples:hermes-kompakt:assembleDebug`, then `adb install`),
-open it, and fill in the Hermes URL, API key, ntfy server, topic and token. "Test" calls
+open it, and fill in the Hermes URL, API key, ntfy server, topic and token (see
+[Profiles](#profiles) for more than one profile). "Test" calls
 `/health`. Saving starts the listener; it also restarts after a reboot.
+
+## Profiles
+
+Each [Hermes profile](https://hermes-agent.nousresearch.com/docs/user-guide/profiles) has its
+own sessions, memory and `API_SERVER_KEY`. The app talks to one gateway URL:
+
+* The **default profile** uses the root routes (`/api/...`, `/v1/...`) and the key entered
+  in "API key".
+* **Other profiles** are added under Settings > Other profiles with their name and their own
+  key. Requests go to `/p/<profile>/api/...`, which needs the gateway to serve profiles from
+  one listener (`gateway.multiplex_profiles`). A named prefix rejects the default key with
+  `401`. `/health` always stays at the root.
+
+The sessions screen's title and the label on agent replies show the profile's name, taken
+from the model id in `GET /v1/models` (the profile name, `API_SERVER_MODEL_NAME` if set, or
+`hermes-agent` for the default profile, shown as "Hermes"). When more than one profile is
+configured, "Profile" in the top bar switches to the next one and reloads its sessions. A
+chat stays on the profile it was opened from.
+
+ntfy is still one topic for all profiles. Per-profile topics (and labelling Inbox items by
+profile) are a follow-up.
 
 ## Open questions to check on a real device
 
