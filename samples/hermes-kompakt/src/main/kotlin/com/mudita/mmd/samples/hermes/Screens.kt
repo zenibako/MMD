@@ -97,8 +97,10 @@ fun SessionsScreen(
         Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ButtonMMD(onClick = {
                 scope.launch {
-                    runCatching { client.createSession("From Kompakt") }
-                        .onSuccess { onOpen(it, "From Kompakt", client.profile.slug, "api_server") }
+                    // Hermes requires unique session titles, so stamp each one with the time.
+                    val title = "Kompakt ${uniqueStamp()}"
+                    runCatching { client.createSession(title) }
+                        .onSuccess { onOpen(it, title, client.profile.slug, "api_server") }
                         .onFailure { status = "Could not start a session: ${it.message}" }
                 }
             }) { TextMMD("New") }
@@ -218,7 +220,7 @@ fun ChatScreen(
                 ButtonMMD(onClick = {
                     working = "Copying…"
                     scope.launch {
-                        val newTitle = "$title (Kompakt)"
+                        val newTitle = "$title (Kompakt ${uniqueStamp()})"
                         runCatching { client.forkSession(sessionId, newTitle) }
                             .onSuccess { onOpenSession(it, newTitle) }
                             .onFailure { working = "Could not continue: ${it.message}" }
@@ -366,3 +368,6 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 /** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those as a date, else as given. */
 private fun formatUpdated(raw: String, fmt: DateFormat): String =
     raw.toDoubleOrNull()?.let { fmt.format(Date((it * 1000).toLong())) } ?: raw
+
+/** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
+private fun uniqueStamp(): String = java.text.SimpleDateFormat("MMM d HH:mm:ss", java.util.Locale.getDefault()).format(Date())
