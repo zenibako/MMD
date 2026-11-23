@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.mudita.mmd.samples.hermes"
-    compileSdk = properties["library.compileSdk"].toString().toInt()
+    // androidx.activity 1.10.x (pulled in via mmd-core) requires compiling against API 35.
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.mudita.mmd.samples.hermes"
