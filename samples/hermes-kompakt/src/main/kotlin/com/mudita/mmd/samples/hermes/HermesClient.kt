@@ -100,6 +100,7 @@ class HermesClient(private val settings: HermesSettings) {
         val text = StringBuilder()
         conn.inputStream.bufferedReader().use { reader ->
             for (e in reader.sseEvents()) {
+                Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}: ${e.data.take(300)}")
                 val data = runCatching { JSONObject(e.data) }.getOrNull() ?: JSONObject()
                 when (e.event.ifBlank { data.str("type", "event") }) {
                     "assistant.delta", "message.delta", "response.output_text.delta" -> {
@@ -115,7 +116,11 @@ class HermesClient(private val settings: HermesSettings) {
                         return@use
                     }
                     "run.failed", "run.cancelled", "run.interrupted" -> {
-                        emit(ChatEvent.Failed(data.str("error", "message", "reason").ifBlank { e.event }))
+                        Log.w("Hermes", "Run ended with ${e.event}: ${e.data.take(1000)}")
+                        val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
+                            ?.str("message", "detail", "type")
+                            ?: data.str("error", "message", "reason", "detail")
+                        emit(ChatEvent.Failed(reason.ifBlank { "${e.event} ${e.data.take(300)}" }))
                         return@use
                     }
                 }
