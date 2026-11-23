@@ -57,6 +57,22 @@ class HermesClient(private val settings: HermesSettings) {
         result
     }
 
+    /**
+     * The profile's name, from the model id `GET /v1/models` reports. Hermes sets that id to
+     * the profile name (`API_SERVER_MODEL_NAME` overrides it), or `hermes-agent` for the
+     * default profile, which is shown as "Hermes". Null if it can't be fetched.
+     */
+    suspend fun profileName(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val id = arrayIn(requestOk("GET", "/v1/models"), "data").objects().firstOrNull()?.str("id").orEmpty()
+            when {
+                id.isBlank() -> null
+                id == "hermes-agent" -> "Hermes"
+                else -> id
+            }
+        }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
+    }
+
     suspend fun listSessions(limit: Int = 30): List<SessionSummary> = withContext(Dispatchers.IO) {
         val body = requestOk("GET", "/api/sessions?limit=$limit")
         arrayIn(body, "sessions", "data", "items").objects().map { o ->

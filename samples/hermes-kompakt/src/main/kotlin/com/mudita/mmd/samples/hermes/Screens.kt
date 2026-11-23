@@ -56,6 +56,8 @@ fun SessionsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember { HermesClient(SettingsStore.load(context)) }
+    var profile by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { profile = client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
     val inbox by Inbox.items.collectAsState()
@@ -69,7 +71,7 @@ fun SessionsScreen(
     LaunchedEffect(Unit) { refresh() }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(title = { TextMMD("Agent sessions") })
+        TopAppBarMMD(title = { TextMMD(profile?.let { "$it sessions" } ?: "Agent sessions") })
         Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ButtonMMD(onClick = {
                 scope.launch {
@@ -105,6 +107,8 @@ fun ChatScreen(sessionId: String, title: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val client = remember { HermesClient(SettingsStore.load(context)) }
+    var profile by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { profile = client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
     var working by remember { mutableStateOf<String?>(null) }
@@ -153,7 +157,7 @@ fun ChatScreen(sessionId: String, title: String, onBack: () -> Unit) {
             items(messages) { m ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     TextMMD(
-                        if (m.role == "user") "You" else "Agent",
+                        if (m.role == "user") "You" else profile ?: "Agent",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.labelMedium,
                     )
