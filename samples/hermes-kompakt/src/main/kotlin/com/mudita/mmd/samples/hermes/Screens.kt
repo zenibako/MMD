@@ -51,7 +51,6 @@ import java.util.Date
 @Composable
 fun SessionsScreen(
     onOpen: (sessionId: String, title: String, profileSlug: String, source: String) -> Unit,
-    onInbox: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -63,9 +62,7 @@ fun SessionsScreen(
     LaunchedEffect(client) { client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
-    val inbox by Inbox.items.collectAsState()
     val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
-    val unread = inbox.count { !it.read }
 
     fun refresh() = scope.launch {
         status = "Loading…"
@@ -105,7 +102,6 @@ fun SessionsScreen(
                 }
             }) { TextMMD("New") }
             OutlinedButtonMMD(onClick = { refresh() }) { TextMMD("Refresh") }
-            OutlinedButtonMMD(onClick = onInbox) { TextMMD(if (unread > 0) "Inbox ($unread)" else "Inbox") }
             OutlinedButtonMMD(onClick = onSettings) { TextMMD("⚙") }
         }
         if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
@@ -244,35 +240,6 @@ fun ChatScreen(
 }
 
 @Composable
-fun InboxScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val items by Inbox.items.collectAsState()
-    val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
-    LaunchedEffect(Unit) { Inbox.markAllRead(context) }
-
-    Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(
-            title = { TextMMD("Inbox") },
-            navigationIcon = { OutlinedButtonMMD(onClick = onBack) { TextMMD("Back") } },
-        )
-        if (items.isEmpty()) TextMMD("Nothing from your agent yet.", modifier = Modifier.padding(16.dp))
-        LazyColumnMMD(Modifier.fillMaxSize()) {
-            items(items, key = { it.id }) { i ->
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    TextMMD(
-                        (if (i.priority >= 4) "! " else "") + i.title.ifBlank { "Hermes" },
-                        fontWeight = FontWeight.Bold,
-                    )
-                    TextMMD(fmt.format(Date(i.time)), style = MaterialTheme.typography.bodySmall)
-                    TextMMD(i.message)
-                }
-                HorizontalDividerMMD(thickness = 1.dp)
-            }
-        }
-    }
-}
-
-@Composable
 fun SettingsScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -290,12 +257,6 @@ fun SettingsScreen(onDone: () -> Unit) {
                 s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
             }
             ProfilesSection(s.profiles) { s = s.copy(profiles = it) }
-            Field("ntfy server", s.ntfyServer) { s = s.copy(ntfyServer = it) }
-            Field("ntfy topic", s.ntfyTopic) { s = s.copy(ntfyTopic = it) }
-            Field("ntfy token (optional)", s.ntfyToken) { s = s.copy(ntfyToken = it) }
-            Field("Urgent at ntfy priority (1-5)", s.urgentPriority.toString()) {
-                it.toIntOrNull()?.let { p -> s = s.copy(urgentPriority = p) }
-            }
             if (status.isNotBlank()) TextMMD(status)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
@@ -306,8 +267,6 @@ fun SettingsScreen(onDone: () -> Unit) {
                 }) { TextMMD("Test") }
                 ButtonMMD(onClick = {
                     SettingsStore.save(context, s)
-                    NtfyListenerService.stop(context)
-                    NtfyListenerService.start(context)
                     onDone()
                 }) { TextMMD("Save") }
             }

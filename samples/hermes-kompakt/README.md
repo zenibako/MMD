@@ -1,29 +1,19 @@
 # Hermes for Kompakt (sample)
 
-A small MMD sample app that lets a **Mudita Kompakt** manage sessions on a
-[Hermes Agent](https://hermes-agent.nousresearch.com/) (Nous Research) running in the cloud,
-and receive agent messages in a way that fits MuditaOS K's notification model.
+A small MMD sample app for chatting with a
+[Hermes Agent](https://hermes-agent.nousresearch.com/) (Nous Research) from a
+**Mudita Kompakt**: browse sessions, start new ones, and talk to the agent on E Ink.
 
-> Status: prototype. Written against the published Hermes docs; it has not yet been
-> built or run on a Kompakt. See "Open questions" before relying on it.
+> Status: prototype, running on a Kompakt (MuditaOS K, Android 12, 480×800) against
+> Hermes Agent 0.22.6.
 
-## Why it is shaped this way
+## Scope: chat only
 
-**What the Kompakt does with notifications.** MuditaOS K has no notification tray, by design.
-Mudita staff on the forum: *"The only notifications you'll receive are for: Alarms, Calendar
-events, Incoming calls"*, shown full screen. Sideloaded apps (WhatsApp, Signal) only get an
-audible ping and nothing on screen. There are no Google Play Services, so there is no FCM push.
-
-That gives three rules for this app:
-
-1. **Normal agent messages make no noise and no notification.** They go to an in-app
-   **Inbox** you read when you choose to open the app.
-2. **Urgent messages use the alarm path.** A high-importance notification with a
-   full-screen intent (category `alarm`) opens a static, black-on-white `UrgentAlertActivity`.
-   This is the only route on Kompakt that reaches the screen, and it is reserved for messages
-   the agent marks urgent (ntfy priority 5, or the `urgent` tag; the threshold is a setting).
-3. **No FCM.** A foreground service keeps one HTTP stream open to an ntfy topic that
-   Hermes publishes to. Its required ongoing notification is on a `MIN`-importance channel.
+This app is the conversation half. **Notifications come from a separate app**,
+[ntfy Kompakt](https://github.com/zenibako/ntfy-android) (a fork of ntfy-android with an
+MMD-style E Ink theme; see its [PR #1](https://github.com/zenibako/ntfy-android/pull/1)).
+An earlier version of this sample had its own ntfy listener, Inbox and urgent alert; they
+were removed in favour of that fork so the phone has one notification path.
 
 **E Ink.** Agent replies are rendered once, when the run completes, not token by token.
 Only "Working: <tool>…" status lines update during a run. Lists refresh on a button, not on a
@@ -33,23 +23,34 @@ timer. All UI comes from MMD (`ThemeMMD`, `TopAppBarMMD`, `LazyColumnMMD`, `Text
 ## Architecture
 
 ```
- Kompakt (this app)                          Cloud host
+ Kompakt                                      Cloud host
  ┌─────────────────────────┐   HTTPS + key   ┌──────────────────────────────┐
- │ Sessions / Chat screens │ ──────────────► │ Hermes API server :8642      │
- │   HermesClient          │ ◄── SSE ─────── │  /api/sessions, …/chat/stream│
+ │ Hermes (this app)       │ ──────────────► │ Hermes API server :8642      │
+ │   Sessions / Chat       │ ◄── SSE ─────── │  /api/sessions, …/chat/stream│
  │                         │                 │                              │
- │ NtfyListenerService     │ ◄── JSON stream │ ntfy topic ◄── Hermes ntfy   │
- │   ├─ priority < 5 → Inbox                 │   adapter, cron `deliver`,   │
- │   └─ priority 5  → full-screen alert      │   `hermes send ntfy:…`       │
+ │ ntfy Kompakt (fork)     │ ◄── JSON stream │ ntfy topic ◄── Hermes ntfy   │
+ │   priority 5 → full-    │                 │   adapter, cron `deliver`,   │
+ │   screen alert          │                 │   `hermes send ntfy:…`       │
  └─────────────────────────┘                 └──────────────────────────────┘
 ```
 
-* **Talking to the agent** uses the Hermes API server's session endpoints:
-  `GET /api/sessions`, `POST /api/sessions`, `GET /api/sessions/{id}/messages`,
-  `POST /api/sessions/{id}/chat/stream` (SSE: `assistant.delta`, `tool.*`, `run.completed`).
-* **The agent reaching you** uses Hermes's ntfy platform. Cron jobs can `deliver="ntfy"`,
-  scripts can run `hermes send ntfy:<topic> "…"`, and replies to ntfy-originated chats come
-  back on the same topic.
+Talking to the agent uses the Hermes API server's session endpoints:
+`GET /api/sessions`, `POST /api/sessions`, `GET /api/sessions/{id}/messages`,
+`POST /api/sessions/{id}/chat/stream` (SSE: `assistant.delta`, `tool.*`,
+`hermes.tool.progress`, `run.completed` / `run.failed`), and
+`POST /api/sessions/{id}/fork`.
+
+## Notifications
+
+Install ntfy Kompakt, subscribe to the topic Hermes publishes to (`NTFY_TOPIC`) with instant
+delivery, and sign in if the server needs it. Messages land in ntfy's list; **priority 5**
+messages also open a full-screen, black-on-white alert (Open / Dismiss), the alarm-style path
+MuditaOS K shows on screen. Everything else stays quiet.
+
+To have the agent use it, tell Hermes when to send priority 5, for example in `SOUL.md`:
+*"Only use ntfy priority 5 for things that need me within the hour; everything else is
+priority 3."* (Hermes 0.22's ntfy adapter can't set a priority itself; a small script that
+POSTs with `Priority: 5` and the `hermes-agent` tag fills that gap.)
 
 ## Hermes host setup
 
@@ -60,24 +61,24 @@ API_SERVER_ENABLED=true
 API_SERVER_KEY=<long random secret>
 # API_SERVER_HOST defaults to 127.0.0.1. Keep it there and expose it via Tailscale
 # (tailscale serve) or a TLS reverse proxy rather than binding 0.0.0.0.
-
-NTFY_SERVER_URL=https://ntfy.example.com   # self-host, or a reserved topic on ntfy.sh
-NTFY_TOKEN=tk_...
-NTFY_TOPIC=hermes-<random>
-NTFY_ALLOWED_USERS=hermes-<random>
-NTFY_HOME_CHANNEL=hermes-<random>
 ```
 
-Then `hermes gateway restart`. To tell the agent how to flag urgency, add a line to its
-instructions, for example: *"Only use ntfy priority 5 for things that need me within the
-hour; everything else is priority 3."*
+Then `hermes gateway restart`.
 
 ## App setup
 
 Install the APK (`./gradlew :samples:hermes-kompakt:assembleDebug`, then `adb install`),
-open it, and fill in the Hermes URL, API key, ntfy server, topic and token (see
-[Profiles](#profiles) for more than one profile). "Test" calls
-`/health`. Saving starts the listener; it also restarts after a reboot.
+open it, and fill in the Hermes URL and API key (see [Profiles](#profiles) for more than
+one profile). URLs without a scheme get `https://`. "Test" calls `/health` and shows the
+HTTP code or error if it fails.
+
+## Sessions
+
+* **New** starts an API session titled "Kompakt <date time>" (Hermes requires unique titles).
+* Sessions from other sources (cron, kanban, messaging) are listed as **read-only**: Hermes
+  only lets API clients continue `api_server` and `bot_room` sessions. Opening one shows its
+  history and a **Continue here** button that forks it into a new API session.
+* Sending closes the keyboard so the reply gets the whole screen.
 
 ## Profiles
 
@@ -97,29 +98,10 @@ from the model id in `GET /v1/models` (the profile name, `API_SERVER_MODEL_NAME`
 configured, "Profile" in the top bar switches to the next one and reloads its sessions. A
 chat stays on the profile it was opened from.
 
-ntfy is still one topic for all profiles. Per-profile topics (and labelling Inbox items by
-profile) are a follow-up.
-
-## Open questions to check on a real device
-
-1. **Does MuditaOS K honour a sideloaded app's full-screen intent?** This is the whole urgent
-   tier. If not, fallbacks are: `SYSTEM_ALERT_WINDOW` and starting the alert activity directly,
-   or writing an event into the Kompakt calendar a minute ahead so the system's own calendar
-   alert fires.
-2. **Battery cost of the always-open ntfy stream.** If it is too high, switch to a periodic
-   poll (`GET /<topic>/json?poll=1&since=<id>`) via WorkManager every 15 minutes and accept
-   that only the urgent tier needs instant delivery.
-3. **Session JSON field names.** The Hermes docs list the session endpoints but not full
-   response bodies, so `HermesClient` parses several likely field names. Adjust once you see
-   a real response.
-4. **Sessions owned by other surfaces.** Hermes returns `409 permission_denied` if the API
-   tries to drive a session owned by the CLI, TUI or a messaging platform. Sessions started
-   here are fine; others are read-only from this app for now.
-
 ## Next steps
 
 * Tool-approval prompts (`POST /v1/runs/{id}/approval`) as large Yes/No buttons, so the agent
   can ask permission from the phone.
 * "Stop" for a running turn (`POST /v1/runs/{id}/stop`).
-* Quiet hours that downgrade urgent to Inbox overnight.
+* Hide system-injected prompts (cron skill instructions) in read-only histories.
 * Move secrets to the Android Keystore.

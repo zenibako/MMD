@@ -16,7 +16,7 @@ data class HermesProfile(val slug: String, val apiKey: String) {
 /**
  * Connection settings, kept in plain SharedPreferences for the prototype.
  *
- * TODO: move the API key and ntfy token to EncryptedSharedPreferences / Android Keystore
+ * TODO: move the API keys to EncryptedSharedPreferences / Android Keystore
  * before using this outside a private tailnet.
  */
 data class HermesSettings(
@@ -26,21 +26,12 @@ data class HermesSettings(
     val profiles: List<HermesProfile> = listOf(HermesProfile("", "")),
     /** Slug of the profile the app is currently using. */
     val activeProfile: String = "",
-    /** ntfy server, `https://ntfy.sh` by default. Use a self-hosted one for anything sensitive. */
-    val ntfyServer: String = "https://ntfy.sh",
-    /** Topic Hermes publishes to (`NTFY_PUBLISH_TOPIC`, or `NTFY_TOPIC` if unset). */
-    val ntfyTopic: String = "",
-    /** Optional ntfy access token (`tk_...`). */
-    val ntfyToken: String = "",
-    /** ntfy priority (1-5) at or above which a message breaks through as a full-screen alert. */
-    val urgentPriority: Int = 5,
 ) {
     val active: HermesProfile get() = profile(activeProfile)
     val isHermesConfigured: Boolean get() = baseUrl.isNotBlank() && active.apiKey.isNotBlank()
 
     /** The profile with [slug], or the default profile if there is none. */
     fun profile(slug: String): HermesProfile = profiles.firstOrNull { it.slug == slug } ?: profiles.first()
-    val isNtfyConfigured: Boolean get() = ntfyServer.isNotBlank() && ntfyTopic.isNotBlank()
 }
 
 object SettingsStore {
@@ -53,10 +44,6 @@ object SettingsStore {
             baseUrl = p.getString("baseUrl", defaults.baseUrl).orEmpty(),
             profiles = readProfiles(p.getString("profiles", null), legacyKey = p.getString("apiKey", "").orEmpty()),
             activeProfile = p.getString("activeProfile", "").orEmpty(),
-            ntfyServer = p.getString("ntfyServer", defaults.ntfyServer).orEmpty(),
-            ntfyTopic = p.getString("ntfyTopic", defaults.ntfyTopic).orEmpty(),
-            ntfyToken = p.getString("ntfyToken", defaults.ntfyToken).orEmpty(),
-            urgentPriority = p.getInt("urgentPriority", defaults.urgentPriority),
         )
     }
 
@@ -66,10 +53,11 @@ object SettingsStore {
             .putString("profiles", writeProfiles(s.profiles))
             .putString("activeProfile", s.profile(s.activeProfile).slug)
             .remove("apiKey")
-            .putString("ntfyServer", normalizeUrl(s.ntfyServer))
-            .putString("ntfyTopic", s.ntfyTopic.trim())
-            .putString("ntfyToken", s.ntfyToken.trim())
-            .putInt("urgentPriority", s.urgentPriority.coerceIn(1, 5))
+            // Notifications moved to the ntfy Kompakt app; drop this app's old ntfy settings.
+            .remove("ntfyServer")
+            .remove("ntfyTopic")
+            .remove("ntfyToken")
+            .remove("urgentPriority")
             .apply()
     }
 
