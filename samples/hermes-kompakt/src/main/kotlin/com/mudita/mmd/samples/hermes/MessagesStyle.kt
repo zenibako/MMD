@@ -128,14 +128,20 @@ fun BarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
 /** The compose bar's send control: an arrow inside an outlined rounded square. */
 @Composable
 fun SendButton(onClick: () -> Unit, enabled: Boolean = true) {
+    // Sized from the Messages compose bar: ~40dp square, thin border, ~24dp icon. The outer
+    // padding keeps a 48dp touch target.
     Box(
         Modifier
-            .size(52.dp)
-            .border(2.dp, Color.Black, RoundedCornerShape(12.dp))
+            .size(48.dp)
             .clickable(enabled = enabled, onClickLabel = "Send", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(SendOutline, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(30.dp))
+        Box(
+            Modifier.size(40.dp).border(1.5.dp, Color.Black, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(SendOutline, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(24.dp))
+        }
     }
 }
 
