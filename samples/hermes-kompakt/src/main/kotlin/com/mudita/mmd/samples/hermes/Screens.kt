@@ -14,6 +14,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -40,7 +45,6 @@ import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.text_field.TextFieldMMD
-import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -62,7 +66,7 @@ fun SessionsScreen(
     LaunchedEffect(client) { client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
-    val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
+    val fmt = remember { RowTimeFormat() }
 
     fun refresh() = scope.launch {
         status = "Loading…"
@@ -81,43 +85,51 @@ fun SessionsScreen(
         settings = settings.copy(activeProfile = next.slug)
     }
 
+    fun newSession() = scope.launch {
+        // Hermes requires unique session titles, so stamp each one with the time.
+        val title = "Kompakt ${uniqueStamp()}"
+        runCatching { client.createSession(title) }
+            .onSuccess { onOpen(it, title, client.profile.slug, "api_server") }
+            .onFailure { status = "Could not start a session: ${it.message}" }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(
-            title = { TextMMD("$profileName sessions", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            actions = {
-                // Cycles through profiles; with only the default profile there is nothing to switch.
-                if (settings.profiles.size > 1) {
-                    OutlinedButtonMMD(onClick = { switchProfile() }) { TextMMD("Profile") }
-                }
-            },
-        )
-        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ButtonMMD(onClick = {
-                scope.launch {
-                    // Hermes requires unique session titles, so stamp each one with the time.
-                    val title = "Kompakt ${uniqueStamp()}"
-                    runCatching { client.createSession(title) }
-                        .onSuccess { onOpen(it, title, client.profile.slug, "api_server") }
-                        .onFailure { status = "Could not start a session: ${it.message}" }
-                }
-            }) { TextMMD("New") }
-            OutlinedButtonMMD(onClick = { refresh() }) { TextMMD("Refresh") }
-            OutlinedButtonMMD(onClick = onSettings) { TextMMD("⚙") }
+        MessagesTopBar(label = profileName, title = "Sessions") {
+            // Cycles through profiles; with only the default profile there is nothing to switch.
+            if (settings.profiles.size > 1) BarIcon(Icons.Outlined.Person, "Switch profile") { switchProfile() }
+            BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
+            BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
+            BarIcon(Icons.Outlined.Add, "New session") { newSession() }
         }
         if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
         LazyColumnMMD(Modifier.fillMaxSize()) {
             items(sessions, key = { it.id }) { s ->
                 Column(
-                    Modifier.fillMaxWidth().clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }.padding(16.dp),
+                    Modifier.fillMaxWidth()
+                        .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    TextMMD(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    TextMMD(
-                        listOf(
-                            s.source,
-                            if (s.isReadOnly) "read-only" else "",
+                    Row(verticalAlignment = Alignment.Top) {
+                        TextMMD(
+                            s.title,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        TextMMD(
                             formatUpdated(s.updated, fmt),
-                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                            modifier = Modifier.padding(start = 12.dp, top = 2.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TextMMD(
+                        listOf(s.source, if (s.isReadOnly) "read-only" else "")
+                            .filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
                     )
                 }
                 HorizontalDividerMMD(thickness = 1.dp)
@@ -191,29 +203,18 @@ fun ChatScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(
-            title = { TextMMD(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            navigationIcon = { OutlinedButtonMMD(onClick = onBack) { TextMMD("Back") } },
-        )
+        // Like a Messages thread: who you're talking to (the profile) above the conversation.
+        MessagesTopBar(label = profileName, title = title, onBack = onBack)
         LazyColumnMMD(Modifier.weight(1f).fillMaxWidth()) {
-            items(messages) { m ->
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    TextMMD(
-                        if (m.role == "user") "You" else profileName,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    TextMMD(m.text)
-                }
-                HorizontalDividerMMD(thickness = 1.dp)
-            }
+            items(messages) { m -> MessageBubble(m.text, mine = m.role == "user") }
         }
-        working?.let { TextMMD(it, modifier = Modifier.padding(horizontal = 16.dp)) }
+        working?.let { TextMMD(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
         if (readOnly) {
             // Hermes refuses API turns on sessions owned by cron, kanban or messaging; fork instead.
-            Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextMMD("Started from $source, so it's read-only here.")
-                ButtonMMD(onClick = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                HorizontalDividerMMD(thickness = 3.dp)
+                TextMMD("Started from $source, so it's read-only here.", modifier = Modifier.padding(horizontal = 12.dp))
+                ButtonMMD(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), onClick = {
                     working = "Copying…"
                     scope.launch {
                         val newTitle = "$title (Kompakt ${uniqueStamp()})"
@@ -224,16 +225,17 @@ fun ChatScreen(
                 }) { TextMMD("Continue here") }
             }
         } else {
-            Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ComposeBar {
                 TextFieldMMD(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { TextMMD("Message your agent") },
+                    placeholder = { TextMMD("Message") },
+                    maxLines = 4,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { send() }),
                 )
-                ButtonMMD(onClick = { send() }) { TextMMD("Send") }
+                SendButton(onClick = { send() })
             }
         }
     }
@@ -247,7 +249,7 @@ fun SettingsScreen(onDone: () -> Unit) {
     var status by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(title = { TextMMD("Connect to Hermes") })
+        MessagesTopBar(label = "Hermes", title = "Settings")
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -324,8 +326,19 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
     )
 }
 
+/** Like a messages list: today's times as "4:19 PM", older ones as "Nov 23". */
+private class RowTimeFormat {
+    private val time = DateFormat.getTimeInstance(DateFormat.SHORT)
+    private val day = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
+
+    fun format(date: Date): String {
+        val today = android.text.format.DateUtils.isToday(date.time)
+        return if (today) time.format(date) else day.format(date)
+    }
+}
+
 /** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those as a date, else as given. */
-private fun formatUpdated(raw: String, fmt: DateFormat): String =
+private fun formatUpdated(raw: String, fmt: RowTimeFormat): String =
     raw.toDoubleOrNull()?.let { fmt.format(Date((it * 1000).toLong())) } ?: raw
 
 /** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
