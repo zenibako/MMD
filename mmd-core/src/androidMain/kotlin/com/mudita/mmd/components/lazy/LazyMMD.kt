@@ -205,9 +205,14 @@ fun LazyColumnMMD(
                 listState = state,
                 scope = scope,
                 scrollOnce = { direction ->
-                    val newIdx = (state.firstVisibleItemIndex - direction * scrollStep)
-                        .coerceIn(0, state.layoutInfo.totalItemsCount - 1)
-                    scope.launch { state.scrollToItem(newIdx) }
+                    if (scrollStep > 0) {
+                        val newIdx = (state.firstVisibleItemIndex - direction * scrollStep)
+                            .coerceIn(0, state.layoutInfo.totalItemsCount - 1)
+                        scope.launch { state.scrollToItem(newIdx) }
+                    } else {
+                        // Drag-distance mode has no item step: page by most of the viewport instead.
+                        scope.launch { state.scrollBy(-direction * pageSize(state)) }
+                    }
                 },
             )
         }
@@ -337,9 +342,14 @@ fun LazyRowMMD(
                 listState = state,
                 scope = scope,
                 scrollOnce = { direction ->
-                    val newIdx = (state.firstVisibleItemIndex - direction * scrollStep)
-                        .coerceIn(0, state.layoutInfo.totalItemsCount - 1)
-                    scope.launch { state.scrollToItem(newIdx) }
+                    if (scrollStep > 0) {
+                        val newIdx = (state.firstVisibleItemIndex - direction * scrollStep)
+                            .coerceIn(0, state.layoutInfo.totalItemsCount - 1)
+                        scope.launch { state.scrollToItem(newIdx) }
+                    } else {
+                        // Drag-distance mode has no item step: page by most of the viewport instead.
+                        scope.launch { state.scrollBy(-direction * pageSize(state)) }
+                    }
                 },
             )
         }
@@ -674,3 +684,9 @@ object LazyDefaultsMMD {
 
 internal val LazyListState.maxValue
     get() = layoutInfo.totalItemsCount - 1
+
+/** Distance the scrollbar arrows move in drag-distance mode: 90% of the viewport. */
+private fun pageSize(state: LazyListState): Float {
+    val info = state.layoutInfo
+    return (info.viewportEndOffset - info.viewportStartOffset) * 0.9f
+}
