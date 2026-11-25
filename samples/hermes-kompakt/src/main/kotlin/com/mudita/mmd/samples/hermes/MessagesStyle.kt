@@ -98,10 +98,10 @@ fun PrimaryBarIcon(icon: ImageVector, description: String, onClick: () -> Unit) 
     }
 }
 
-/** Row separator in Messages' conversation list: a thin dashed line, inset from both edges. */
+/** Row separator in Messages' conversation list: a thin dashed line, inset like the row text. */
 @Composable
 fun DashedRowDivider() {
-    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 20.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(start = 20.dp)) {
         drawLine(
             color = Color.Black,
             start = Offset(0f, size.height / 2),

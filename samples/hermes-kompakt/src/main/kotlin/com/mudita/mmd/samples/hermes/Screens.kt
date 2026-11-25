@@ -113,7 +113,8 @@ fun SessionsScreen(
                 Column(
                     Modifier.fillMaxWidth()
                         .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        // No end padding: the scrollbar already sits to the right of the row.
+                        .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
