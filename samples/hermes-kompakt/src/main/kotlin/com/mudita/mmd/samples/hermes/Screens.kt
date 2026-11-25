@@ -212,9 +212,14 @@ fun ChatScreen(
         LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.scrollToItem(messages.size - 1) }
         val timeFmt = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
         val dayFmt = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()) }
-        // scrollStep = 0 follows the finger: one message can be taller than the screen, and the
-        // default (jump 4 items, aligned to an item's top) would never show the rest of it.
-        LazyColumnMMD(Modifier.weight(1f).fillMaxWidth(), state = listState, scrollStep = 0) {
+        // Scrolls like a Messages thread: follows the finger (scrollStep = 0), no scrollbar. The
+        // default (jump 4 items, aligned to an item's top) never shows the rest of a long reply.
+        LazyColumnMMD(
+            Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
+            scrollStep = 0,
+            isScrollbarVisible = false,
+        ) {
             itemsIndexed(messages) { i, m ->
                 val day = m.time?.let { dayFmt.format(Date(it)) }
                 val previousDay = messages.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
