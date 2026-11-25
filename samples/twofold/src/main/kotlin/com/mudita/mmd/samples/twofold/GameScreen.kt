@@ -3,11 +3,13 @@ package com.mudita.mmd.samples.twofold
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,9 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,12 +43,10 @@ import androidx.compose.ui.unit.sp
 import com.mudita.mmd.R
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
-import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import com.mudita.mmd.components.menus.DropdownMenuItemMMD
 import com.mudita.mmd.components.menus.DropdownMenuMMD
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
-import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
 import com.mudita.mmd.samples.twofold.game.Direction
 import com.mudita.mmd.samples.twofold.game.GOAL_TILE
 import com.mudita.mmd.samples.twofold.game.GameState
@@ -59,7 +59,6 @@ import kotlin.math.abs
 /** Minimum swipe length before a drag counts as a move. */
 private val SwipeThreshold = 32.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameScreen(
     state: GameState,
@@ -80,28 +79,24 @@ fun GameScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(
-            title = { TextMMD("Twofold", fontWeight = FontWeight.Bold) },
+        KompaktTopBar(
+            label = "Twofold · Best ${state.best}",
+            title = "Score ${state.score}",
             actions = {
                 // Undo is the one action used mid-game, so it stays on the bar; the rest live in
                 // the overflow menu, as in MMD's own menu sample.
-                IconButton(onClick = { onStateChange(state.undo()) }, enabled = state.canUndo) {
-                    Icon(UndoIcon, contentDescription = "Undo", tint = if (state.canUndo) Ink else Ink.copy(alpha = 0.35f))
-                }
+                BarIcon(UndoIcon, "Undo", enabled = state.canUndo) { onStateChange(state.undo()) }
                 Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(MoreIcon, contentDescription = "More options", tint = Ink)
-                    }
+                    BarIcon(MoreIcon, "More options") { menuOpen = true }
                     DropdownMenuMMD(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItemMMD(
                             text = { TextMMD("New game") },
                             onClick = {
                                 menuOpen = false
-                                pickingStyle = false
                                 onStateChange(state.restart())
                             },
                         )
-                        HorizontalDividerMMD()
+                        DashedRowDivider()
                         DropdownMenuItemMMD(
                             text = { TextMMD("Tile style") },
                             onClick = {
@@ -114,21 +109,16 @@ fun GameScreen(
             },
         )
 
-        Column(
+        Box(
             Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                // Swipes are read anywhere below the app bar, not just on the board,
+                .weight(1f)
+                .fillMaxWidth()
+                // Swipes are read anywhere between the bars, not just on the board,
                 // so a slightly-off swipe still lands.
-                .swipeToMove(onMove),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .swipeToMove(onMove)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ScoreBox("Score", state.score, Modifier.weight(1f))
-                ScoreBox("Best", state.best, Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(12.dp))
-
             Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
                 Board(state, tileStyle)
                 when {
@@ -146,23 +136,9 @@ fun GameScreen(
                     )
                 }
             }
-
-            Spacer(Modifier.weight(1f))
-            DirectionPad(onMove)
         }
-    }
-}
 
-@Composable
-private fun ScoreBox(label: String, value: Int, modifier: Modifier) {
-    Column(
-        modifier
-            .border(2.dp, Ink)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        TextMMD(label.uppercase(), fontSize = 12.sp, letterSpacing = 1.sp)
-        TextMMD(value.toString(), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        BottomBar { DirectionPad(onMove) }
     }
 }
 
@@ -219,18 +195,12 @@ private fun Overlay(
  * Tile style choice as its own screen: a back arrow in the top bar (and the system back
  * gesture) returns to the game. Picking a style applies it at once.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopAppBarMMD(
-            title = { TextMMD("Tile style", fontWeight = FontWeight.Bold) },
-            navigationIcon = {
-                IconButton(onClick = onBack) { Icon(BackIcon, contentDescription = "Back", tint = Ink) }
-            },
-        )
+        KompaktTopBar(label = "Twofold", title = "Tile style", onBack = onBack)
         TileStyle.entries.forEachIndexed { i, style ->
-            if (i > 0) HorizontalDividerMMD()
+            if (i > 0) DashedRowDivider()
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -241,8 +211,8 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
                 RadioButtonMMD(selected = style == selected, onClick = null)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    TextMMD(style.label, fontWeight = FontWeight.Bold)
-                    TextMMD(style.description, fontSize = 12.sp, maxLines = 2)
+                    TextMMD(style.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    TextMMD(style.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 }
                 Spacer(Modifier.width(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -255,22 +225,33 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
     }
 }
 
-/** On-screen arrow buttons for people who prefer tapping to swiping. */
+/**
+ * On-screen arrows for people who prefer tapping to swiping. Drawn like the system Messages
+ * app's send button: a 40dp outlined rounded square with a 24dp icon in a 48dp touch target,
+ * using MMD's own chevron drawables.
+ */
 @Composable
-private fun DirectionPad(onMove: (Direction) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(
-            R.drawable.chevron_filled_left to Direction.WEST,
-            R.drawable.chevron_filled_up to Direction.NORTH,
-            R.drawable.chevron_filled_down to Direction.SOUTH,
-            R.drawable.chevron_filled_right to Direction.EAST,
-        ).forEach { (chevron, dir) ->
-            OutlinedButtonMMD(
-                onClick = { onMove(dir) },
-                modifier = Modifier.weight(1f).semantics { contentDescription = "Move ${dir.name.lowercase()}" },
+private fun RowScope.DirectionPad(onMove: (Direction) -> Unit) {
+    listOf(
+        R.drawable.chevron_filled_left to Direction.WEST,
+        R.drawable.chevron_filled_up to Direction.NORTH,
+        R.drawable.chevron_filled_down to Direction.SOUTH,
+        R.drawable.chevron_filled_right to Direction.EAST,
+    ).forEach { (chevron, dir) ->
+        val label = "Move ${dir.name.lowercase()}"
+        Box(
+            Modifier
+                .weight(1f)
+                .height(48.dp)
+                .clickable(onClickLabel = label) { onMove(dir) }
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier.size(40.dp).border(1.5.dp, Ink, RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
             ) {
-                // MMD's own chevron drawables.
-                Icon(painterResource(chevron), contentDescription = null, tint = Ink)
+                Icon(painterResource(chevron), contentDescription = null, tint = Ink, modifier = Modifier.size(24.dp))
             }
         }
     }

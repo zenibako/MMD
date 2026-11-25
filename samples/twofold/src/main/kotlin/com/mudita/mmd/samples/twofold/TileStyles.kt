@@ -112,12 +112,16 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             // white corner grows again; the goal tile also gets a white inner frame.
             val n = level(value)
             solid = n >= 7
-            val fraction = if (solid) 0.14f + 0.06f * (minOf(n, 11) - 7) else 0.14f + 0.06f * (n - 1)
+            // Previews start the corner larger so the smallest fold is still visible.
+            val start = if (scale < 1f) 0.24f else 0.14f
+            val fraction = start + 0.06f * (if (solid) minOf(n, 11) - 7 else n - 1)
             val base = if (solid) modifier.background(Ink) else modifier.border(d(1.dp), Ink)
             base.foldedCorner(fraction, if (solid) Paper else Ink).goalFrame(value, d(4.dp), d(2.dp), RectangleShape)
         }
 
-        TileStyle.STEPS -> modifier.border(d(if (value >= 128) 3.dp else 1.dp), Ink).stepDots(level(value), d(4.dp), d(2.dp))
+        // Dots never shrink below 3dp, so they stay visible in the small previews.
+        TileStyle.STEPS -> modifier.border(d(if (value >= 128) 3.dp else 1.dp), Ink)
+            .stepDots(level(value), maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp))
 
         TileStyle.NUMBERS -> {
             underline = value >= 128
