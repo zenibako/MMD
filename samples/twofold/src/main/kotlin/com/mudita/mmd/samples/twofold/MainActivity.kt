@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                     var style by remember { mutableStateOf(TileStyle.fromName(prefs.getString(KEY_STYLE, null))) }
                     GameScreen(
                         state = state,
-                        onStateChange = { state = it },
+                        onUpdate = { change -> state = change(state) },
                         tileStyle = style,
                         onTileStyleChange = {
                             style = it

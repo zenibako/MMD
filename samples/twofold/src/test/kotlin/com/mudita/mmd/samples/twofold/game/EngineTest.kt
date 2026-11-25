@@ -73,6 +73,14 @@ class EngineTest {
     }
 
     @Test
+    fun undoingNewGameKeepsContinuePastGoal() {
+        val won = GameState(grid("2048 . . .", ". . . .", ". . . .", ". . . ."), 0, 0).continuePastGoal()
+        val restored = won.restart(Random(1)).undo()
+        assertFalse(restored.hasWon)
+        assertEquals(won.grid, restored.grid)
+    }
+
+    @Test
     fun codecRoundTrip() {
         val s = GameState.new(4, best = 512, random = Random(7)).move(Direction.NORTH, Random(3)).move(Direction.WEST, Random(4))
         val decoded = GameCodec.decode(GameCodec.encode(s))!!

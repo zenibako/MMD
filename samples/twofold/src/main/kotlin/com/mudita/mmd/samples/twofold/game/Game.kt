@@ -15,7 +15,7 @@ data class GameState(
     val keepGoing: Boolean = false,
     val moves: Int = 0,
 ) {
-    data class Snapshot(val grid: Grid, val score: Int, val moves: Int)
+    data class Snapshot(val grid: Grid, val score: Int, val moves: Int, val keepGoing: Boolean = false)
 
     val isGameOver: Boolean get() = Engine.isGameOver(grid)
     val hasWon: Boolean get() = !keepGoing && Engine.maxTile(grid) >= GOAL_TILE
@@ -37,7 +37,7 @@ fun GameState.move(direction: Direction, random: Random = Random): GameState {
         grid = Engine.spawnTile(result.grid, random),
         score = newScore,
         best = maxOf(best, newScore),
-        previous = GameState.Snapshot(grid, score, moves),
+        previous = GameState.Snapshot(grid, score, moves, keepGoing),
         moves = moves + 1,
     )
 }
@@ -45,12 +45,12 @@ fun GameState.move(direction: Direction, random: Random = Random): GameState {
 /** Steps back one move. Best score is kept, since it was really reached. */
 fun GameState.undo(): GameState {
     val p = previous ?: return this
-    return copy(grid = p.grid, score = p.score, moves = p.moves, previous = null)
+    return copy(grid = p.grid, score = p.score, moves = p.moves, keepGoing = p.keepGoing, previous = null)
 }
 
 /** Starts over. The abandoned game stays reachable through [undo], so no confirmation is needed. */
 fun GameState.restart(random: Random = Random): GameState =
-    GameState.new(grid.size, best, random).copy(previous = GameState.Snapshot(grid, score, moves))
+    GameState.new(grid.size, best, random).copy(previous = GameState.Snapshot(grid, score, moves, keepGoing))
 
 fun GameState.continuePastGoal(): GameState = copy(keepGoing = true)
 

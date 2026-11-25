@@ -63,15 +63,15 @@ private val SwipeThreshold = 32.dp
 @Composable
 fun GameScreen(
     state: GameState,
-    onStateChange: (GameState) -> Unit,
+    /** Applies a change to the latest game state, so quick inputs never act on a stale board. */
+    onUpdate: ((GameState) -> GameState) -> Unit,
     tileStyle: TileStyle,
     onTileStyleChange: (TileStyle) -> Unit,
 ) {
     var pickingStyle by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
-    val current by rememberUpdatedState(state)
-    val emit by rememberUpdatedState(onStateChange)
-    val onMove: (Direction) -> Unit = { emit(current.move(it)) }
+    val update by rememberUpdatedState(onUpdate)
+    val onMove: (Direction) -> Unit = { dir -> update { it.move(dir) } }
 
     if (pickingStyle) {
         BackHandler { pickingStyle = false }
@@ -86,7 +86,7 @@ fun GameScreen(
             actions = {
                 // Undo is the one action used mid-game, so it stays on the bar; the rest live in
                 // the overflow menu, as in MMD's own menu sample.
-                BarIcon(UndoIcon, "Undo", enabled = state.canUndo) { onStateChange(state.undo()) }
+                BarIcon(UndoIcon, "Undo", enabled = state.canUndo) { onUpdate { it.undo() } }
                 Box {
                     BarIcon(MoreIcon, "More options") { menuOpen = true }
                     DropdownMenuMMD(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -94,7 +94,7 @@ fun GameScreen(
                             text = { TextMMD("New game") },
                             onClick = {
                                 menuOpen = false
-                                onStateChange(state.restart())
+                                onUpdate { it.restart() }
                             },
                         )
                         DashedRowDivider()
@@ -126,14 +126,14 @@ fun GameScreen(
                     state.hasWon -> Overlay(
                         title = "You made $GOAL_TILE",
                         body = "${state.moves} moves. Keep going for a bigger tile?",
-                        primary = "Keep going" to { onStateChange(state.continuePastGoal()) },
-                        secondary = "New game" to { onStateChange(state.restart()) },
+                        primary = "Keep going" to { onUpdate { it.continuePastGoal() } },
+                        secondary = "New game" to { onUpdate { it.restart() } },
                     )
                     state.isGameOver -> Overlay(
                         title = "No moves left",
                         body = "Score ${state.score}. Undo the last move or start again.",
-                        primary = "New game" to { onStateChange(state.restart()) },
-                        secondary = if (state.canUndo) "Undo" to { onStateChange(state.undo()) } else null,
+                        primary = "New game" to { onUpdate { it.restart() } },
+                        secondary = if (state.canUndo) "Undo" to { onUpdate { it.undo() } } else null,
                     )
                 }
             }
