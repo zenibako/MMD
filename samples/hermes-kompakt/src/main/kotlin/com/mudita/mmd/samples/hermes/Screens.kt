@@ -96,45 +96,50 @@ fun SessionsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        MessagesTopBar(label = profileName, title = "Sessions") {
+        // Like the Messages list: one bold title (the profile, as Messages shows "SMS"), plain
+        // icons, and the main action as a filled "+".
+        MessagesTopBar(label = "", title = profileName) {
             // Cycles through profiles; with only the default profile there is nothing to switch.
             if (settings.profiles.size > 1) BarIcon(Icons.Outlined.Person, "Switch profile") { switchProfile() }
             BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
             BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
-            BarIcon(Icons.Outlined.Add, "New session") { newSession() }
+            PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
         }
         if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
         LazyColumnMMD(Modifier.fillMaxSize()) {
             items(sessions, key = { it.id }) { s ->
+                // Messages-list row: bold name on one line, date at the right, then one line of
+                // preview (Hermes's preview, else the source), flagged when read-only.
                 Column(
                     Modifier.fillMaxWidth()
                         .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.Top) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         TextMMD(
                             s.title,
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         TextMMD(
                             formatUpdated(s.updated, fmt),
-                            modifier = Modifier.padding(start = 12.dp, top = 2.dp),
+                            modifier = Modifier.padding(start = 12.dp),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+                    val preview = s.preview.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: s.source
                     TextMMD(
-                        listOf(s.source, if (s.isReadOnly) "read-only" else "")
-                            .filter { it.isNotBlank() }.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
+                        if (s.isReadOnly) "read-only · $preview" else preview,
+                        style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                HorizontalDividerMMD(thickness = 1.dp)
+                DashedRowDivider()
             }
         }
     }
@@ -343,10 +348,10 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
     )
 }
 
-/** Like a messages list: today's times as "4:19 PM", older ones as "Nov 23". */
+/** Like a messages list: today's times as "4:19 PM", older ones as "23 Nov". */
 private class RowTimeFormat {
     private val time = DateFormat.getTimeInstance(DateFormat.SHORT)
-    private val day = java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault())
+    private val day = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
 
     fun format(date: Date): String {
         val today = android.text.format.DateUtils.isToday(date.time)

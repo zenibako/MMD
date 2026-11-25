@@ -1,5 +1,10 @@
 package com.mudita.mmd.samples.hermes
 
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +80,35 @@ fun MessagesTopBar(
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }
         HorizontalDividerMMD(thickness = BarRule)
+    }
+}
+
+/** The bar's main action (Messages' "+"): white icon in a filled black rounded square. */
+@Composable
+fun PrimaryBarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .padding(start = 4.dp)
+            .size(48.dp)
+            .background(Color.Black, RoundedCornerShape(10.dp))
+            .clickable(onClickLabel = description, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = Color.White, modifier = Modifier.size(30.dp))
+    }
+}
+
+/** Row separator in Messages' conversation list: a thin dashed line, inset from both edges. */
+@Composable
+fun DashedRowDivider() {
+    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 20.dp)) {
+        drawLine(
+            color = Color.Black,
+            start = Offset(0f, size.height / 2),
+            end = Offset(size.width, size.height / 2),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+        )
     }
 }
 

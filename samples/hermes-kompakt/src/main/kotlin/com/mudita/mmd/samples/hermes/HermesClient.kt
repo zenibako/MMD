@@ -20,6 +20,8 @@ data class SessionSummary(
     val title: String,
     val updated: String,
     val source: String,
+    /** A message preview, if Hermes includes one in the list (field names vary). */
+    val preview: String = "",
 ) {
     val isReadOnly: Boolean get() = isReadOnlySource(source)
 }
@@ -95,6 +97,8 @@ class HermesClient(
                 title = o.str("title", "name").ifBlank { "(untitled)" },
                 updated = o.str("updated_at", "last_active", "last_activity", "created_at"),
                 source = o.str("source", "platform"),
+                preview = o.str("preview", "last_message", "snippet", "summary")
+                    .ifBlank { o.optJSONObject("last_message")?.let { contentText(it.opt("content")) }.orEmpty() },
             )
         }.filter { it.id.isNotBlank() }
     }
