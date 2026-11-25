@@ -37,13 +37,13 @@ private val MmdCorner = RoundedCornerShape(8.dp)
  * animation, as MMD asks for on E Ink; they differ in how a value's size is shown.
  */
 enum class TileStyle(val label: String, val description: String) {
-    WEIGHT("Weight", "Outlines get heavier, then solid from 128"),
-    ROUNDED("Rounded", "Weight, with MMD's rounded corners"),
-    FRAMES("Frames", "One more frame for each doubling"),
-    INK("Ink", "Solid tiles, frames from 128"),
-    NUMBERS("Numbers", "Plain grid, the digits do the work"),
-    FOLD("Fold", "A corner folds in further each doubling"),
-    STEPS("Steps", "One dot along the bottom per doubling"),
+    WEIGHT("Weight", "Heavier lines, solid from 128"),
+    ROUNDED("Rounded", "Weight with rounded corners"),
+    FRAMES("Frames", "A frame per doubling"),
+    INK("Ink", "Solid tiles, framed from 128"),
+    NUMBERS("Numbers", "Plain grid, bolder digits"),
+    FOLD("Fold", "Corner folds in as it grows"),
+    STEPS("Steps", "A dot per doubling"),
     ;
 
     companion object {

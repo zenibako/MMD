@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mudita.mmd.R
@@ -201,23 +202,25 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
         KompaktTopBar(label = "Twofold", title = "Tile style", onBack = onBack)
         TileStyle.entries.forEachIndexed { i, style ->
             if (i > 0) DashedRowDivider()
+            // Rows share the screen height evenly, so all styles fit without scrolling.
             Row(
                 Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .selectable(selected = style == selected, onClick = { onSelect(style) })
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButtonMMD(selected = style == selected, onClick = null)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     TextMMD(style.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    TextMMD(style.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                    TextMMD(style.description, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.width(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     listOf(2, 16, 256, 2048).forEach {
-                        StyledTile(it, style, Modifier.size(36.dp), scale = 0.44f)
+                        StyledTile(it, style, Modifier.size(34.dp), scale = 0.42f)
                     }
                 }
             }
