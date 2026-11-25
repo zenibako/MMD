@@ -9,7 +9,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.contentDescription
@@ -39,6 +42,8 @@ enum class TileStyle(val label: String, val description: String) {
     FRAMES("Frames", "One more frame for each doubling"),
     INK("Ink", "Solid tiles, frames from 128"),
     NUMBERS("Numbers", "Plain grid, the digits do the work"),
+    FOLD("Fold", "A corner folds in further each doubling"),
+    STEPS("Steps", "One dot along the bottom per doubling"),
     ;
 
     companion object {
@@ -102,6 +107,18 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             m
         }
 
+        TileStyle.FOLD -> {
+            // 2 to 64: a black corner grows on a white tile. From 128 the tile turns black and a
+            // white corner grows again; the goal tile also gets a white inner frame.
+            val n = level(value)
+            solid = n >= 7
+            val fraction = if (solid) 0.14f + 0.06f * (minOf(n, 11) - 7) else 0.14f + 0.06f * (n - 1)
+            val base = if (solid) modifier.background(Ink) else modifier.border(d(1.dp), Ink)
+            base.foldedCorner(fraction, if (solid) Paper else Ink).goalFrame(value, d(4.dp), d(2.dp), RectangleShape)
+        }
+
+        TileStyle.STEPS -> modifier.border(d(if (value >= 128) 3.dp else 1.dp), Ink).stepDots(level(value), d(4.dp), d(2.dp))
+
         TileStyle.NUMBERS -> {
             underline = value >= 128
             if (value >= GOAL_TILE) modifier.border(d(1.dp), Ink).padding(d(4.dp)).border(d(3.dp), Ink) else modifier.border(d(1.dp), Ink)
@@ -138,6 +155,28 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             maxLines = 1,
         )
     }
+}
+
+/** Fills a right triangle in the top-right corner, [fraction] of the tile's shorter side. */
+private fun Modifier.foldedCorner(fraction: Float, color: Color): Modifier = drawBehind {
+    val side = size.minDimension * fraction
+    val path = Path().apply {
+        moveTo(size.width - side, 0f)
+        lineTo(size.width, 0f)
+        lineTo(size.width, side)
+        close()
+    }
+    drawPath(path, color)
+}
+
+/** A centred row of [count] dots along the bottom edge. */
+private fun Modifier.stepDots(count: Int, dot: Dp, gap: Dp): Modifier = drawBehind {
+    val r = dot.toPx() / 2
+    val step = dot.toPx() + gap.toPx()
+    val total = count * step - gap.toPx()
+    val startX = (size.width - total) / 2 + r
+    val y = size.height - r - dot.toPx()
+    repeat(count) { drawCircle(Ink, radius = r, center = Offset(startX + it * step, y)) }
 }
 
 /** On a filled tile, adds a white inner frame once the goal tile is reached. */

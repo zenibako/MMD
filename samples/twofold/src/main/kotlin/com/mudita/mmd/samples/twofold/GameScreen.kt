@@ -2,7 +2,6 @@ package com.mudita.mmd.samples.twofold
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,8 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
+import com.mudita.mmd.components.divider.HorizontalDividerMMD
+import com.mudita.mmd.components.menus.DropdownMenuItemMMD
+import com.mudita.mmd.components.menus.DropdownMenuMMD
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
@@ -61,6 +67,7 @@ fun GameScreen(
     onTileStyleChange: (TileStyle) -> Unit,
 ) {
     var pickingStyle by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     val current by rememberUpdatedState(state)
     val emit by rememberUpdatedState(onStateChange)
     val onMove: (Direction) -> Unit = { if (!pickingStyle) emit(current.move(it)) }
@@ -69,9 +76,34 @@ fun GameScreen(
         TopAppBarMMD(
             title = { TextMMD("Twofold", fontWeight = FontWeight.Bold) },
             actions = {
-                BarAction("Undo", enabled = state.canUndo) { onStateChange(state.undo()) }
-                BarAction("New", enabled = true) { onStateChange(state.restart()) }
-                BarAction("Style", enabled = true) { pickingStyle = !pickingStyle }
+                // Undo is the one action used mid-game, so it stays on the bar; the rest live in
+                // the overflow menu, as in MMD's own menu sample.
+                IconButton(onClick = { onStateChange(state.undo()) }, enabled = state.canUndo) {
+                    Icon(UndoIcon, contentDescription = "Undo", tint = if (state.canUndo) Ink else Ink.copy(alpha = 0.35f))
+                }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(MoreIcon, contentDescription = "More options", tint = Ink)
+                    }
+                    DropdownMenuMMD(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItemMMD(
+                            text = { TextMMD("New game") },
+                            onClick = {
+                                menuOpen = false
+                                pickingStyle = false
+                                onStateChange(state.restart())
+                            },
+                        )
+                        HorizontalDividerMMD()
+                        DropdownMenuItemMMD(
+                            text = { TextMMD("Tile style") },
+                            onClick = {
+                                menuOpen = false
+                                pickingStyle = true
+                            },
+                        )
+                    }
+                }
             },
         )
 
@@ -117,18 +149,6 @@ fun GameScreen(
             DirectionPad(onMove)
         }
     }
-}
-
-@Composable
-private fun BarAction(label: String, enabled: Boolean, onClick: () -> Unit) {
-    TextMMD(
-        text = label,
-        color = if (enabled) Ink else Ink.copy(alpha = 0.35f),
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
 }
 
 @Composable
@@ -201,8 +221,9 @@ private fun StylePicker(selected: TileStyle, onSelect: (TileStyle) -> Unit, onDo
             .fillMaxSize()
             .background(Paper)
             .border(3.dp, Ink)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         TileStyle.entries.forEach { style ->
             Row(
