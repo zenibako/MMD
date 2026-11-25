@@ -30,6 +30,8 @@ fun isReadOnlySource(source: String): Boolean = source.isNotBlank() && source !i
 data class ChatMessage(
     val role: String,
     val text: String,
+    /** When it was sent, epoch millis; null if Hermes didn't say. */
+    val time: Long? = null,
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
@@ -119,7 +121,7 @@ class HermesClient(
     suspend fun messages(sessionId: String): List<ChatMessage> = withContext(Dispatchers.IO) {
         val body = requestOk("GET", "/api/sessions/${enc(sessionId)}/messages")
         arrayIn(body, "messages", "data", "items").objects()
-            .map { ChatMessage(it.str("role"), contentText(it.opt("content"))) }
+            .map { ChatMessage(it.str("role"), contentText(it.opt("content")), epochMillis(it.str("timestamp", "created_at"))) }
             .filter { it.role in setOf("user", "assistant") && it.text.isNotBlank() }
     }
 
@@ -229,6 +231,9 @@ object ProfileNames {
 
     fun label(profile: HermesProfile): String = names[profile.slug] ?: profile.slug.ifEmpty { "Default" }
 }
+
+/** Hermes sends times as epoch seconds, sometimes fractional (`1795466275.71`). */
+internal fun epochMillis(raw: String): Long? = raw.toDoubleOrNull()?.let { (it * 1000).toLong() }
 
 // --- JSON helpers -------------------------------------------------------------------
 

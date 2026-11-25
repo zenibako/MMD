@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
@@ -175,7 +177,7 @@ fun ChatScreen(
         keyboard?.hide()
         focusManager.clearFocus()
         draft = ""
-        messages.add(ChatMessage("user", text))
+        messages.add(ChatMessage("user", text, System.currentTimeMillis()))
         working = "Thinking…"
         scope.launch {
             runCatching {
@@ -185,7 +187,7 @@ fun ChatScreen(
                         is ChatEvent.Tool ->
                             working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
                         is ChatEvent.Done -> {
-                            e.finalText?.let { messages.add(ChatMessage("assistant", it)) }
+                            e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
                             working = null
                         }
                         is ChatEvent.Failed -> working = "Run failed: ${e.reason}"
@@ -205,8 +207,18 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize()) {
         // Like a Messages thread: who you're talking to (the profile) above the conversation.
         MessagesTopBar(label = profileName, title = title, onBack = onBack)
-        LazyColumnMMD(Modifier.weight(1f).fillMaxWidth()) {
-            items(messages) { m -> MessageBubble(m.text, mine = m.role == "user") }
+        // Newest at the bottom, like a Messages thread; jump there when messages change.
+        val listState = rememberLazyListState()
+        LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.scrollToItem(messages.size - 1) }
+        val timeFmt = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+        val dayFmt = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()) }
+        LazyColumnMMD(Modifier.weight(1f).fillMaxWidth(), state = listState) {
+            itemsIndexed(messages) { i, m ->
+                val day = m.time?.let { dayFmt.format(Date(it)) }
+                val previousDay = messages.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
+                if (day != null && day != previousDay) DaySeparator(day)
+                MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
+            }
         }
         working?.let { TextMMD(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
         if (readOnly) {
@@ -226,14 +238,12 @@ fun ChatScreen(
             }
         } else {
             ComposeBar {
-                TextFieldMMD(
+                MessageField(
                     value = draft,
                     onValueChange = { draft = it },
+                    placeholder = "Message",
+                    onSend = { send() },
                     modifier = Modifier.weight(1f),
-                    placeholder = { TextMMD("Message") },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { send() }),
                 )
                 SendButton(onClick = { send() })
             }

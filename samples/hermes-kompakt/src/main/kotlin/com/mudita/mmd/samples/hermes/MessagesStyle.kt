@@ -1,6 +1,5 @@
 package com.mudita.mmd.samples.hermes
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Send
@@ -23,9 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
@@ -114,30 +118,68 @@ fun ComposeBar(content: @Composable RowScope.() -> Unit) {
 }
 
 /**
- * One chat message. Your messages sit on the right, filled black with white text; the agent's
- * sit on the left, outlined. Static: no animation, one refresh per message.
+ * One chat message, as the Messages app draws them: outlined, never filled. Received messages
+ * sit on the left with a thin outline and a square bottom-left corner; yours sit on the right
+ * with a thicker outline. The time goes underneath, on the same side.
  */
 @Composable
-fun MessageBubble(text: String, mine: Boolean) {
-    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+fun MessageBubble(text: String, mine: Boolean, time: String?) {
+    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
+    val shape = if (mine) {
+        RoundedCornerShape(14.dp)
+    } else {
+        RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 0.dp)
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
-        val shape = RoundedCornerShape(16.dp)
         Box(
             Modifier
                 .widthIn(max = maxWidth)
-                .then(
-                    if (mine) {
-                        Modifier.background(Color.Black, shape)
-                    } else {
-                        Modifier.border(1.5.dp, Color.Black, shape)
-                    },
-                )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .border(if (mine) 2.5.dp else 1.dp, Color.Black, shape)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            TextMMD(text, color = if (mine) Color.White else Color.Black, style = MaterialTheme.typography.bodyMedium)
+            TextMMD(text, style = MaterialTheme.typography.bodyLarge)
+        }
+        if (!time.isNullOrBlank()) {
+            TextMMD(time, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+/** Centered day marker between messages from different days, e.g. "• 03 Aug •". */
+@Composable
+fun DaySeparator(day: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+        TextMMD("•  $day  •", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** The compose field: no outline or underline, just text and a cursor, as in Messages. */
+@Composable
+fun MessageField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val style = MaterialTheme.typography.bodyLarge.copy(color = Color.Black)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
+        textStyle = style,
+        maxLines = 4,
+        cursorBrush = SolidColor(Color.Black),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = { onSend() }),
+        decorationBox = { inner ->
+            Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) TextMMD(placeholder, style = MaterialTheme.typography.bodyLarge)
+                inner()
+            }
+        },
+    )
 }
