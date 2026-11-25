@@ -19,6 +19,7 @@ import com.mudita.mmd.samples.twofold.game.GameState
 
 private const val PREFS = "twofold"
 private const val KEY_GAME = "game"
+private const val KEY_STYLE = "tileStyle"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +35,16 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(state) {
                         prefs.edit().putString(KEY_GAME, GameCodec.encode(state)).apply()
                     }
-                    GameScreen(state = state, onStateChange = { state = it })
+                    var style by remember { mutableStateOf(TileStyle.fromName(prefs.getString(KEY_STYLE, null))) }
+                    GameScreen(
+                        state = state,
+                        onStateChange = { state = it },
+                        tileStyle = style,
+                        onTileStyleChange = {
+                            style = it
+                            prefs.edit().putString(KEY_STYLE, it.name).apply()
+                        },
+                    )
                 }
             }
         }

@@ -14,14 +14,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -32,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
+import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
 import com.mudita.mmd.samples.twofold.game.Direction
@@ -43,18 +49,21 @@ import com.mudita.mmd.samples.twofold.game.restart
 import com.mudita.mmd.samples.twofold.game.undo
 import kotlin.math.abs
 
-private val Ink = Color.Black
-private val Paper = Color.White
-
 /** Minimum swipe length before a drag counts as a move. */
 private val SwipeThreshold = 32.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GameScreen(state: GameState, onStateChange: (GameState) -> Unit) {
+fun GameScreen(
+    state: GameState,
+    onStateChange: (GameState) -> Unit,
+    tileStyle: TileStyle,
+    onTileStyleChange: (TileStyle) -> Unit,
+) {
+    var pickingStyle by remember { mutableStateOf(false) }
     val current by rememberUpdatedState(state)
     val emit by rememberUpdatedState(onStateChange)
-    val onMove: (Direction) -> Unit = { emit(current.move(it)) }
+    val onMove: (Direction) -> Unit = { if (!pickingStyle) emit(current.move(it)) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBarMMD(
@@ -62,6 +71,7 @@ fun GameScreen(state: GameState, onStateChange: (GameState) -> Unit) {
             actions = {
                 BarAction("Undo", enabled = state.canUndo) { onStateChange(state.undo()) }
                 BarAction("New", enabled = true) { onStateChange(state.restart()) }
+                BarAction("Style", enabled = true) { pickingStyle = !pickingStyle }
             },
         )
 
@@ -81,8 +91,13 @@ fun GameScreen(state: GameState, onStateChange: (GameState) -> Unit) {
             Spacer(Modifier.height(12.dp))
 
             Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                Board(state)
+                Board(state, tileStyle)
                 when {
+                    pickingStyle -> StylePicker(
+                        selected = tileStyle,
+                        onSelect = onTileStyleChange,
+                        onDone = { pickingStyle = false },
+                    )
                     state.hasWon -> Overlay(
                         title = "You made $GOAL_TILE",
                         body = "${state.moves} moves. Keep going for a bigger tile?",
@@ -130,7 +145,7 @@ private fun ScoreBox(label: String, value: Int, modifier: Modifier) {
 }
 
 @Composable
-private fun Board(state: GameState) {
+private fun Board(state: GameState, style: TileStyle) {
     val size = state.grid.size
     Column(
         Modifier
@@ -142,49 +157,10 @@ private fun Board(state: GameState) {
         for (row in 0 until size) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (col in 0 until size) {
-                    Tile(state.grid[row][col], Modifier.weight(1f).fillMaxSize())
+                    StyledTile(state.grid[row][col], style, Modifier.weight(1f).fillMaxSize())
                 }
             }
         }
-    }
-}
-
-/**
- * Tiles are told apart by weight instead of colour, since the screen is greyscale:
- * empty is a faint outline, 2 and 4 are thin, 8 to 64 are heavy outlines, 128 and up are
- * solid black, and the goal tile and above get an extra inner frame.
- */
-@Composable
-private fun Tile(value: Int?, modifier: Modifier) {
-    if (value == null) {
-        Box(modifier.border(1.dp, Ink.copy(alpha = 0.25f)))
-        return
-    }
-    val solid = value >= 128
-    val base = when {
-        solid -> modifier.background(Ink)
-        value >= 8 -> modifier.border(3.dp, Ink)
-        else -> modifier.border(1.dp, Ink)
-    }
-    val framed = if (value >= GOAL_TILE) base.padding(4.dp).border(2.dp, Paper) else base
-    val digits = value.toString().length
-    Box(
-        framed.semantics { contentDescription = "Tile $value" },
-        contentAlignment = Alignment.Center,
-    ) {
-        TextMMD(
-            text = value.toString(),
-            color = if (solid) Paper else Ink,
-            fontWeight = if (value >= 8) FontWeight.Bold else FontWeight.Normal,
-            fontSize = when {
-                digits <= 2 -> 34.sp
-                digits == 3 -> 28.sp
-                digits == 4 -> 22.sp
-                else -> 17.sp
-            },
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-        )
     }
 }
 
@@ -214,6 +190,41 @@ private fun Overlay(
                 ButtonMMD(onClick = primary.second) { TextMMD(primary.first) }
             }
         }
+    }
+}
+
+/** Lists the tile styles with a preview row each. Picking one applies it at once. */
+@Composable
+private fun StylePicker(selected: TileStyle, onSelect: (TileStyle) -> Unit, onDone: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Paper)
+            .border(3.dp, Ink)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TileStyle.entries.forEach { style ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = style == selected, onClick = { onSelect(style) }),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButtonMMD(selected = style == selected, onClick = null)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    TextMMD(style.label, fontWeight = FontWeight.Bold)
+                    TextMMD(style.description, fontSize = 11.sp, maxLines = 1)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    listOf(2, 16, 256, 2048).forEach {
+                        StyledTile(it, style, Modifier.size(30.dp), scale = 0.36f)
+                    }
+                }
+            }
+        }
+        ButtonMMD(onClick = onDone, modifier = Modifier.align(Alignment.End)) { TextMMD("Done") }
     }
 }
 
