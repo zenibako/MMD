@@ -22,7 +22,8 @@ Slide the board up, down, left or right. Equal tiles that touch merge into their
   - *Steps*: one dot along the bottom of the tile per doubling.
 - **Swipe or tap.** Swipe anywhere below the top bar, or use the four arrow buttons.
 - **MMD top bar.** Undo is an icon on the bar; New game and Tile style sit in the ⋮ overflow
-  menu (`DropdownMenuMMD`), following MMD's menu sample.
+  menu (`DropdownMenuMMD`), following MMD's menu sample. Tile style opens as its own screen with
+  a back arrow, and the arrow pad uses MMD's chevron icons.
 - **Undo.** One step back, including after **New**, so an accidental tap never loses a game.
 - **Offline.** No permissions. The game is saved after every move.
 

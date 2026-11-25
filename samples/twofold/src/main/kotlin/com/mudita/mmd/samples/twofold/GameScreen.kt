@@ -1,5 +1,6 @@
 package com.mudita.mmd.samples.twofold
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -15,9 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,12 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mudita.mmd.R
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
@@ -70,7 +71,13 @@ fun GameScreen(
     var menuOpen by remember { mutableStateOf(false) }
     val current by rememberUpdatedState(state)
     val emit by rememberUpdatedState(onStateChange)
-    val onMove: (Direction) -> Unit = { if (!pickingStyle) emit(current.move(it)) }
+    val onMove: (Direction) -> Unit = { emit(current.move(it)) }
+
+    if (pickingStyle) {
+        BackHandler { pickingStyle = false }
+        StyleScreen(selected = tileStyle, onSelect = onTileStyleChange, onBack = { pickingStyle = false })
+        return
+    }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBarMMD(
@@ -125,11 +132,6 @@ fun GameScreen(
             Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
                 Board(state, tileStyle)
                 when {
-                    pickingStyle -> StylePicker(
-                        selected = tileStyle,
-                        onSelect = onTileStyleChange,
-                        onDone = { pickingStyle = false },
-                    )
                     state.hasWon -> Overlay(
                         title = "You made $GOAL_TILE",
                         body = "${state.moves} moves. Keep going for a bigger tile?",
@@ -213,57 +215,62 @@ private fun Overlay(
     }
 }
 
-/** Lists the tile styles with a preview row each. Picking one applies it at once. */
+/**
+ * Tile style choice as its own screen: a back arrow in the top bar (and the system back
+ * gesture) returns to the game. Picking a style applies it at once.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StylePicker(selected: TileStyle, onSelect: (TileStyle) -> Unit, onDone: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Paper)
-            .border(3.dp, Ink)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TileStyle.entries.forEach { style ->
+private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        TopAppBarMMD(
+            title = { TextMMD("Tile style", fontWeight = FontWeight.Bold) },
+            navigationIcon = {
+                IconButton(onClick = onBack) { Icon(BackIcon, contentDescription = "Back", tint = Ink) }
+            },
+        )
+        TileStyle.entries.forEachIndexed { i, style ->
+            if (i > 0) HorizontalDividerMMD()
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .selectable(selected = style == selected, onClick = { onSelect(style) }),
+                    .selectable(selected = style == selected, onClick = { onSelect(style) })
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButtonMMD(selected = style == selected, onClick = null)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     TextMMD(style.label, fontWeight = FontWeight.Bold)
-                    TextMMD(style.description, fontSize = 11.sp, maxLines = 1)
+                    TextMMD(style.description, fontSize = 12.sp, maxLines = 2)
                 }
+                Spacer(Modifier.width(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     listOf(2, 16, 256, 2048).forEach {
-                        StyledTile(it, style, Modifier.size(30.dp), scale = 0.36f)
+                        StyledTile(it, style, Modifier.size(36.dp), scale = 0.44f)
                     }
                 }
             }
         }
-        ButtonMMD(onClick = onDone, modifier = Modifier.align(Alignment.End)) { TextMMD("Done") }
     }
 }
 
-/** On-screen arrows for people who prefer tapping to swiping. */
+/** On-screen arrow buttons for people who prefer tapping to swiping. */
 @Composable
 private fun DirectionPad(onMove: (Direction) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(
-            "←" to Direction.WEST,
-            "↑" to Direction.NORTH,
-            "↓" to Direction.SOUTH,
-            "→" to Direction.EAST,
-        ).forEach { (arrow, dir) ->
+            R.drawable.chevron_filled_left to Direction.WEST,
+            R.drawable.chevron_filled_up to Direction.NORTH,
+            R.drawable.chevron_filled_down to Direction.SOUTH,
+            R.drawable.chevron_filled_right to Direction.EAST,
+        ).forEach { (chevron, dir) ->
             OutlinedButtonMMD(
                 onClick = { onMove(dir) },
                 modifier = Modifier.weight(1f).semantics { contentDescription = "Move ${dir.name.lowercase()}" },
             ) {
-                TextMMD(arrow, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                // MMD's own chevron drawables.
+                Icon(painterResource(chevron), contentDescription = null, tint = Ink)
             }
         }
     }
