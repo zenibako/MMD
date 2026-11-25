@@ -1,5 +1,8 @@
 package com.mudita.mmd.samples.hermes
 
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.height
@@ -23,7 +26,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -133,7 +135,7 @@ fun SendButton(onClick: () -> Unit, enabled: Boolean = true) {
             .clickable(enabled = enabled, onClickLabel = "Send", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(28.dp))
+        Icon(SendOutline, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(30.dp))
     }
 }
 
@@ -216,4 +218,27 @@ fun MessageField(
             }
         },
     )
+}
+
+/**
+ * The Messages app's send icon: a hollow paper plane, drawn as a thin stroke (an arrowhead with
+ * a notch at the back and a short line to its centre), unlike Material's solid Send icon.
+ */
+private val SendOutline: ImageVector by lazy {
+    ImageVector.Builder("SendOutline", 24.dp, 24.dp, 24f, 24f).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.6f,
+            strokeLineJoin = StrokeJoin.Round,
+            strokeLineCap = StrokeCap.Round,
+        ) {
+            moveTo(3f, 4f)
+            lineTo(21f, 12f)
+            lineTo(3f, 20f)
+            lineTo(6f, 12f)
+            close()
+            moveTo(6f, 12f)
+            lineTo(13f, 12f)
+        }
+    }.build()
 }
