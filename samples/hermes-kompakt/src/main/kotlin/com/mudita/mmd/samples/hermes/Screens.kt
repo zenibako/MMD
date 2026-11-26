@@ -3,6 +3,8 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import com.mudita.mmd.components.switcher.SwitchMMD
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.unit.sp
@@ -278,6 +280,8 @@ fun ChatScreen(
     // Explicit flags rather than the status text, which changes while a turn runs.
     var historyLoaded by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
+    // Whether new messages should scroll the chat; off while you are reading further up.
+    var followBottom by remember { mutableStateOf(true) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
@@ -332,6 +336,8 @@ fun ChatScreen(
         focusManager.clearFocus()
         draft = ""
         messages.add(ChatMessage("user", text, System.currentTimeMillis()))
+        // You just sent it: show it, even if you had scrolled up.
+        followBottom = true
         working = "Thinking…"
         sending = true
         scope.launch {
@@ -364,12 +370,32 @@ fun ChatScreen(
         }
     }
 
+    var showTools by remember { mutableStateOf(SettingsStore.showToolMessages(context)) }
+    var chatSheet by remember { mutableStateOf(false) }
+    val shown = visibleMessages(messages, showTools)
+
+    // Newest at the bottom, like a Messages thread. Opening (and each history load) lands on
+    // the very end of the latest message; later messages keep following the bottom only while
+    // the reader is there, so scrolling up to read isn't undone when a reply arrives.
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (!scrolling) followBottom = !listState.canScrollForward
+        }
+    }
+    LaunchedEffect(shown.size, showTools, historyLoaded) {
+        if (shown.isNotEmpty() && followBottom) {
+            // The offset is clamped, so this shows the end of the last item, not just its top.
+            listState.scrollToItem(shown.size - 1, scrollOffset = Int.MAX_VALUE)
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // Like a Messages thread: who you're talking to (the profile) above the conversation.
-        MessagesTopBar(label = profileName, title = sessionTitleOrPlaceholder(shownTitle), onBack = onBack)
-        // Newest at the bottom, like a Messages thread; jump there when messages change.
-        val listState = rememberLazyListState()
-        LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.scrollToItem(messages.size - 1) }
+        MessagesTopBar(label = profileName, title = sessionTitleOrPlaceholder(shownTitle), onBack = onBack) {
+            BarIcon(Icons.Filled.MoreVert, "More") { chatSheet = true }
+        }
         val timeFmt = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
         val dayFmt = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()) }
         // Scrolls like a Messages thread: follows the finger (scrollStep = 0), no scrollbar. The
@@ -380,11 +406,15 @@ fun ChatScreen(
             scrollStep = 0,
             isScrollbarVisible = false,
         ) {
-            itemsIndexed(messages) { i, m ->
+            itemsIndexed(shown) { i, m ->
                 val day = m.time?.let { dayFmt.format(Date(it)) }
-                val previousDay = messages.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
+                val previousDay = shown.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
                 if (day != null && day != previousDay) DaySeparator(day)
-                MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
+                if (m.kind == MessageKind.CONVERSATION) {
+                    MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
+                } else {
+                    EventLine(m.label, m.text)
+                }
             }
         }
         (forkStatus ?: working)?.let {
@@ -434,6 +464,50 @@ fun ChatScreen(
                 SendButton(onClick = { send() }, enabled = historyLoaded && !sending)
             }
         }
+    }
+        if (chatSheet) {
+            KompaktSheet("Chat", onDismiss = { chatSheet = false }) {
+                SheetToggle("Show tool and system messages", checked = showTools) {
+                    showTools = it
+                    SettingsStore.setShowToolMessages(context, it)
+                }
+            }
+        }
+    }
+}
+
+/** A tool call/result or system entry: a small bold heading over a few lines of its text. */
+@Composable
+private fun EventLine(label: String, text: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (label.isNotBlank()) {
+            TextMMD(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        TextMMD(text, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+    }
+    DashedRowDivider()
+}
+
+/** A sheet row with a label and a switch; the whole 48 dp row toggles it. */
+@Composable
+private fun SheetToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(onClickLabel = label) { onChange(!checked) }
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextMMD(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 21.sp),
+        )
+        SwitchMMD(checked = checked, onCheckedChange = onChange)
     }
 }
 

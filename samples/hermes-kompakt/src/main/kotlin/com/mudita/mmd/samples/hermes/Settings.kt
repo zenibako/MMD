@@ -113,6 +113,14 @@ object SettingsStore {
         return incoming.size
     }
 
+    /** Whether chats show tool calls/results and system entries as well as the conversation. */
+    fun showToolMessages(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("showToolMessages", false)
+
+    fun setShowToolMessages(context: Context, show: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("showToolMessages", show).apply()
+    }
+
     fun setActiveProfile(context: Context, slug: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("activeProfile", slug).apply()
     }

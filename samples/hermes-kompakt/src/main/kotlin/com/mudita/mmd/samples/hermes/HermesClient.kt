@@ -41,6 +41,10 @@ data class ChatMessage(
     val text: String,
     /** When it was sent, epoch millis; null if Hermes didn't say. */
     val time: Long? = null,
+    /** Conversation, or a tool/system entry the chat can hide. */
+    val kind: MessageKind = MessageKind.CONVERSATION,
+    /** Short heading for tool and system entries, e.g. the tool's name. */
+    val label: String = "",
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
@@ -156,9 +160,16 @@ class HermesClient(
 
     suspend fun messages(sessionId: String): List<ChatMessage> = withContext(Dispatchers.IO) {
         val body = requestOk("GET", "/api/sessions/${enc(sessionId)}/messages")
-        arrayIn(body, "messages", "data", "items").objects()
-            .map { ChatMessage(it.str("role"), contentText(it.opt("content")), epochMillis(it.str("timestamp", "created_at"))) }
-            .filter { it.role in setOf("user", "assistant") && it.text.isNotBlank() }
+        arrayIn(body, "messages", "data", "items").objects().flatMap { o ->
+            historyEntries(
+                role = o.str("role"),
+                text = contentText(o.opt("content")),
+                time = epochMillis(o.str("timestamp", "created_at")),
+                toolName = o.str("tool_name", "name"),
+                toolCalls = toolCallNames(o.opt("tool_calls")),
+                displayKind = o.str("display_kind"),
+            )
+        }
     }
 
     /**
@@ -332,6 +343,12 @@ internal fun arrayIn(body: String, vararg keys: String): JSONArray {
 }
 
 /** Message content may be a string or an OpenAI-style list of parts. */
+/** Names of the tools an assistant entry called (`tool_calls[].function.name` or `.name`). */
+internal fun toolCallNames(calls: Any?): List<String> = when (calls) {
+    is JSONArray -> calls.objects().map { c -> c.optJSONObject("function")?.str("name").orEmpty().ifBlank { c.str("name") } }
+    else -> emptyList()
+}.filter { it.isNotBlank() }
+
 internal fun contentText(content: Any?): String = when (content) {
     is String -> content
     is JSONArray -> content.objects().joinToString("") { it.str("text") }
