@@ -1,80 +1,74 @@
 ---
 name: kompakt-eink-compose
-description: Build Kompakt-style E Ink screens in Jetpack Compose with MMD (ThemeMMD, *MMD components). Use when writing or reviewing Compose UI for the Mudita Kompakt or any app in this repo.
+description: Build Kompakt-native E Ink screens in Jetpack Compose with MMD (ThemeMMD, *MMD components). Use when writing or reviewing Compose UI for the Mudita Kompakt or any app in this repo.
 ---
 
 # Kompakt E Ink screens in Compose + MMD
 
-Read `kompakt-eink-design` first: it holds the rules and the numbers. This skill is how to
-meet them with MMD. The reference code below is the merged, cleaned-up version of what the
-Hermes sample (`samples/hermes-kompakt`, `MessagesStyle.kt`) and Twofold
-(`samples/twofold`, `KompaktBars.kt`) each built by hand.
+Read `kompakt-eink-design` first: it holds the rules and the stock numbers. This skill is
+how to meet them with MMD. Mudita's own Compose apps appear to use MMD but override some
+of its defaults, so the reference file below does the same: it keeps MMD's theme, lists,
+toggles and buttons, and adds the stock type scale, top bar, dashed divider, bottom sheet
+and message bubbles.
 
 ## Setup
 
-- Wrap the whole app in `ThemeMMD { Surface(color = MaterialTheme.colorScheme.background) { … } }`.
-  It sets the black-and-white scheme, Lato and turns ripples off. Never pass another
-  `colorScheme` and never wrap content in a second `MaterialTheme`.
+- Wrap the app in
+  `ThemeMMD(typography = KompaktTypography) { Surface(color = MaterialTheme.colorScheme.background) { … } }`.
+  `ThemeMMD` gives the black-and-white scheme and turns ripples off; `KompaktTypography`
+  (below) swaps MMD's light type scale for the stock one. Never add another
+  `MaterialTheme` or colour scheme.
 - Depend on `project(":mmd-core")` (or `com.mudita:MMD`), `androidx.activity:activity-compose`
   and `androidx.compose.material3`. `compileSdk = 35` (mmd-core pulls androidx.activity
-  1.10), `minSdk = 28`, the Kompakt runs API 31.
-- Text: `TextMMD`, with `MaterialTheme.typography.*` styles. Use `fontWeight = FontWeight.Bold`
-  for titles; do not introduce new sizes.
-- Colour: only `Color.Black`, `Color.White` or the scheme's roles (which are black or white).
-  Name them once (`val Ink = Color.Black; val Paper = Color.White`). Disabled =
-  `Ink.copy(alpha = 0.3f)`.
+  1.10), `minSdk = 28`; the Kompakt runs API 31.
+- Text: `TextMMD` with `MaterialTheme.typography.*`. Only the roles in `KompaktTypography`.
+- Colour: `Ink` and `Paper` only. Disabled glyphs: `Ink.copy(alpha = 0.3f)`.
 
-## Which MMD component to use
+## Which component to use
 
 | Need | Use | Notes |
 |---|---|---|
 | Text | `TextMMD` | |
-| Primary button | `ButtonMMD` | one per screen |
-| Secondary button | `OutlinedButtonMMD` | |
-| Text input in forms | `TextFieldMMD` | compose bars use the borderless field below |
-| List | `LazyColumnMMD` | default paged scrolling + scrollbar for rows; `scrollStep = 0, isScrollbarVisible = false` for chats and long reading |
-| Rule | `HorizontalDividerMMD(thickness = 3.dp)` | the bar rule |
-| Row divider | `DashedRowDivider()` below | MMD has no dashed divider |
-| Overflow menu | `DropdownMenuMMD` + `DropdownMenuItemMMD` | already flat and outlined |
-| Toggles | `SwitchMMD`, `CheckboxMMD`, `RadioButtonMMD` | |
-| Tabs | `TabsMMD` / `TabMMD` | only when the stock app uses tabs for the same thing |
-| Top bar | `KompaktTopBar` below | not `TopAppBarMMD`: the stock bar has a label over a bold title and a 3 dp rule |
-| Main create action | `PrimaryBarIcon` in the top bar | not `FloatingActionButtonMMD` |
-| Sheets, snackbars, tooltips | avoid | use a sub-screen, a one-line status, or the label |
+| Primary / secondary button | `KompaktButton(filled = true/false)` below | wraps `ButtonMMD` / `OutlinedButtonMMD` at 48 dp, 12 dp corners |
+| Text input in forms | `TextFieldMMD` | compose bars use the borderless `MessageField` |
+| List | `LazyColumnMMD` | its default ▲/▼ + pill scrollbar is the stock pattern; keep it. For one long piece of reading or a chat: `scrollStep = 0, isScrollbarVisible = false` |
+| Rule under the top bar | `HorizontalDividerMMD(thickness = 3.dp, color = Ink)` | inside `KompaktTopBar` |
+| Row divider | `DashedRowDivider()` | MMD only has solid dividers |
+| ⋮ menu, confirmations, choices | `KompaktSheet` below | stock apps never use dropdown menus |
+| Switch | `SwitchMMD` | 52 x 32 dp vs stock 48 x 30; acceptable, or wrap in `Modifier.scale(0.93f)` |
+| Radio / checkbox | `RadioButtonMMD`, `CheckboxMMD` | stock radio is larger (26 dp); fine to keep MMD's |
+| Top bar | `KompaktTopBar` | not `TopAppBarMMD`: stock title is 25 sp Black at 16 dp |
+| Create action | `CreateBarButton` in the top bar | not `FloatingActionButtonMMD` |
+| Tabs | `TabsMMD` / `TabMMD` | only where a stock app uses tabs (Phone) |
+| Snackbar, tooltip, dropdown, `ModalBottomSheet` | avoid | they animate or aren't stock patterns |
 
-Avoid: `AnimatedVisibility`, `animate*AsState`, `Crossfade`, `AnimatedContent`, infinite
-`CircularProgressIndicator`, `Modifier.shadow`, any non-zero `tonalElevation` or
-`shadowElevation`, `indication = ripple(...)`, colour other than black and white, and
-streaming text into the UI token by token.
+Avoid `AnimatedVisibility`, `animate*AsState`, `Crossfade`, `AnimatedContent`,
+`animateScrollToItem`, infinite progress indicators, `Modifier.shadow`, non-zero
+`tonalElevation`/`shadowElevation`, `indication = ripple(...)`, and streaming text.
 
 ## Navigation
 
-- Keep a `sealed interface Screen` and a `var screen by remember { mutableStateOf(...) }`,
-  and swap whole screens. No navigation animations.
-- Each sub-screen has a back arrow in `KompaktTopBar(onBack = …)` and a
-  `BackHandler { … }` for the system back gesture.
-- A secondary option set (Twofold's tile style) is a sub-screen, not a sheet or dialog.
-
-```kotlin
-if (pickingStyle) {
-    BackHandler { pickingStyle = false }
-    StyleScreen(selected, onSelect, onBack = { pickingStyle = false })
-    return
-}
-```
+- A `sealed interface Screen` plus `var screen by remember { mutableStateOf(...) }`; swap
+  whole screens, no navigation animation.
+- Sub-screens: `KompaktTopBar(onBack = …)` plus `BackHandler { … }`.
+- A setting with several choices opens a sub-screen of radio rows, not a dialog.
+- A sheet is part of the screen's state: `var sheet by remember { mutableStateOf(false) }`,
+  with `BackHandler(sheet) { sheet = false }`.
 
 ## Reference: `KompaktUi.kt`
 
-Copy this file into the app's UI package and build screens from it. Keep the numbers; they
-are the design contract.
+Copy into the app's UI package. Keep the numbers; they are the stock values.
 
 ```kotlin
 package your.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -82,7 +76,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -95,12 +91,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mudita.mmd.R
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
@@ -110,186 +111,250 @@ val Ink = Color.Black
 val Paper = Color.White
 
 object Kompakt {
+    val BarHeight = 64.dp
     val BarRule = 3.dp
-    val RowInsetStart = 20.dp
-    val RowInsetEnd = 8.dp
+    val TextInset = 16.dp
+    val IconTextInset = 60.dp
     val Touch = 48.dp
-    val BarIconSize = 30.dp
-    val ButtonIconSize = 24.dp
+    val BarIcon = 28.dp
+    val ButtonHeight = 48.dp
+    val ButtonCorner = 12.dp
 }
 
-/** Top bar: optional back arrow, a small [label] above a bold [title], plain icon [actions]. */
+// Stock type scale: Lato Medium (500) for content, Lato Black (900) for titles and labels.
+// MMD ships no Lato Medium file, so 500 falls back to Regular; add lato_medium.ttf to your
+// app's res/font and list it here for an exact match.
+private val Lato = FontFamily(
+    Font(R.font.lato_regular, FontWeight.Normal),
+    Font(R.font.lato_regular, FontWeight.Medium),
+    Font(R.font.lato_bold, FontWeight.Bold),
+    Font(R.font.lato_black, FontWeight.Black),
+)
+
+private fun style(size: Int, line: Int, weight: FontWeight) =
+    TextStyle(fontFamily = Lato, fontWeight = weight, fontSize = size.sp, lineHeight = line.sp, color = Ink)
+
+val KompaktTypography = Typography(
+    headlineLarge = style(36, 40, FontWeight.Black),   // full-screen alert title
+    titleLarge = style(25, 28, FontWeight.Black),      // top bar, sheet title, empty-state headline
+    titleMedium = style(23, 25, FontWeight.Black),     // two-line row title
+    titleSmall = style(21, 25, FontWeight.Black),      // section header, list name
+    bodyLarge = style(21, 25, FontWeight.Medium),      // row label, summary, body
+    bodyMedium = style(18, 22, FontWeight.Medium),     // message text, times, previews
+    bodySmall = style(15, 18, FontWeight.Medium),      // densest captions only
+    labelLarge = style(21, 23, FontWeight.Black),      // button label
+    labelMedium = style(18, 22, FontWeight.Black),     // small labels, URGENT
+    labelSmall = style(15, 15, FontWeight.Medium),
+)
+
+/** Top bar: optional back arrow, a 25 sp Black title, plain icon [actions], then the 3 dp rule. */
 @Composable
-fun KompaktTopBar(
-    title: String,
-    label: String = "",
-    onBack: (() -> Unit)? = null,
-    actions: @Composable RowScope.() -> Unit = {},
-) {
+fun KompaktTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Column(Modifier.fillMaxWidth().background(Paper)) {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (onBack != null) BarIcon(BackIcon, "Back", onClick = onBack) else Spacer(Modifier.size(8.dp))
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                if (label.isNotBlank()) {
-                    TextMMD(label, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                TextMMD(
-                    title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        Row(Modifier.fillMaxWidth().height(Kompakt.BarHeight), verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) {
+                Box(Modifier.padding(start = 6.dp).width(54.dp)) { BarIcon(BackIcon, "Back", onClick = onBack) }
+            } else {
+                Spacer(Modifier.width(Kompakt.TextInset))
             }
-            Row(verticalAlignment = Alignment.CenterVertically, content = actions)
+            TextMMD(
+                title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(Modifier.padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
         }
         HorizontalDividerMMD(thickness = Kompakt.BarRule, color = Ink)
     }
 }
 
-/** Plain icon action: 30 dp icon, 48 dp target. Disabled icons are faint, not hidden. */
+/** Plain black icon, 28 dp in a 48 dp target. Disabled icons are faint, not hidden. */
 @Composable
 fun BarIcon(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         Modifier.size(Kompakt.Touch).clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, description, tint = if (enabled) Ink else Ink.copy(alpha = 0.3f), modifier = Modifier.size(Kompakt.BarIconSize))
+        Icon(icon, description, tint = if (enabled) Ink else Ink.copy(alpha = 0.3f), modifier = Modifier.size(Kompakt.BarIcon))
     }
 }
 
-/** The screen's one main action (Messages' "+"): white icon in a filled black rounded square. */
+/** The screen's one create action, as in Messages: a black 42 x 36 dp rectangle, 8 dp corners, white "+". */
 @Composable
-fun PrimaryBarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
+fun CreateBarButton(description: String, onClick: () -> Unit) {
     Box(
-        Modifier
-            .padding(start = 4.dp)
-            .size(Kompakt.Touch)
-            .background(Ink, RoundedCornerShape(10.dp))
+        Modifier.padding(start = 4.dp, end = 10.dp).size(width = 42.dp, height = Kompakt.Touch)
             .clickable(onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, description, tint = Paper, modifier = Modifier.size(Kompakt.BarIconSize))
-    }
-}
-
-/** Bottom bar: 3 dp rule, then a padded row of controls. */
-@Composable
-fun KompaktBottomBar(content: @Composable RowScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Paper)) {
-        HorizontalDividerMMD(thickness = Kompakt.BarRule, color = Ink)
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
-    }
-}
-
-/** Outlined 40 dp rounded square with a 24 dp icon, in a 48 dp target (send, arrow pads). */
-@Composable
-fun OutlinedIconButton(icon: ImageVector, description: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier.size(Kompakt.Touch).clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        val ink = if (enabled) Ink else Ink.copy(alpha = 0.3f)
-        Box(Modifier.size(40.dp).border(1.5.dp, ink, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
-            Icon(icon, description, tint = ink, modifier = Modifier.size(Kompakt.ButtonIconSize))
+        Box(Modifier.size(42.dp, 36.dp).background(Ink, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+            Icon(PlusIcon, description, tint = Paper, modifier = Modifier.size(22.dp))
         }
     }
 }
 
-/** Row separator: 1 dp dashed line (4 on, 3 off), inset like the row text. */
+/** 1 dp dashed line (2 on, 2 off) from [start] to the right edge. Use [Kompakt.IconTextInset] after an icon. */
 @Composable
-fun DashedRowDivider() {
-    Canvas(
-        Modifier.fillMaxWidth().height(1.dp).padding(start = Kompakt.RowInsetStart, end = Kompakt.RowInsetEnd),
-    ) {
+fun DashedRowDivider(start: Dp = Kompakt.TextInset) {
+    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(start = start)) {
         drawLine(
             color = Ink,
             start = Offset(0f, size.height / 2),
             end = Offset(size.width, size.height / 2),
             strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx())),
         )
     }
 }
 
-/** A list row: bold title with [meta] (a time or count) at the right, optional one-line [subtitle]. */
+/**
+ * A list row. Single line: [title] in 21 sp Medium, 64 dp. With [subtitle]: 23 sp Black title over a
+ * 21 sp Medium summary. [trailing] holds a value, a ">" chevron or a switch.
+ */
 @Composable
-fun KompaktListRow(
+fun KompaktRow(
     title: String,
-    meta: String? = null,
     subtitle: String? = null,
-    selected: Boolean = false,
-    onClick: () -> Unit,
+    minHeight: Dp = 64.dp,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .then(if (selected) Modifier.border(3.dp, Ink) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(start = Kompakt.RowInsetStart, end = Kompakt.RowInsetEnd, top = 12.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextMMD(
-                title,
-                modifier = Modifier.weight(1f).alignByBaseline(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (meta != null) {
-                TextMMD(meta, modifier = Modifier.padding(start = 12.dp).alignByBaseline(), style = MaterialTheme.typography.bodySmall)
+    Column {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = minHeight)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(start = Kompakt.TextInset, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leading != null) {
+                Box(Modifier.width(Kompakt.IconTextInset - Kompakt.TextInset), contentAlignment = Alignment.CenterStart) { leading() }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val typography = MaterialTheme.typography
+                TextMMD(
+                    title,
+                    style = if (subtitle == null) typography.bodyLarge else typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (subtitle != null) TextMMD(subtitle, style = typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(12.dp))
+                trailing()
             }
         }
-        if (!subtitle.isNullOrBlank()) {
-            TextMMD(subtitle, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        DashedRowDivider(start = if (leading != null) Kompakt.IconTextInset else Kompakt.TextInset)
     }
 }
 
-/** Settings section header: bold, black, at the row inset. */
+/** Message-list row (72 dp): bold name with the time at the right, one line of preview. */
+@Composable
+fun ConversationRow(name: String, time: String, preview: String, onClick: () -> Unit) {
+    Column {
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onClick)
+                .padding(horizontal = Kompakt.TextInset, vertical = 10.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextMMD(name, Modifier.weight(1f).alignByBaseline(), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TextMMD(time, Modifier.padding(start = 12.dp).alignByBaseline(), style = MaterialTheme.typography.bodyMedium)
+            }
+            TextMMD(preview, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DashedRowDivider()
+    }
+}
+
+/** Settings section header: 21 sp Black at 16 dp, dashed line below. */
 @Composable
 fun SectionHeader(text: String) {
-    TextMMD(
-        text,
-        modifier = Modifier.padding(start = Kompakt.RowInsetStart, top = 20.dp, bottom = 4.dp),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-    )
+    TextMMD(text, Modifier.padding(start = Kompakt.TextInset, top = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.titleSmall)
+    DashedRowDivider()
 }
 
-/** One message, outlined, never filled. Received: left, 1 dp, square bottom-start. Mine: right, 2.5 dp. */
+/** Stock button: 48 dp tall, 12 dp corners; filled black or 2 dp outline. */
 @Composable
-fun MessageBubble(text: String, mine: Boolean, time: String?) {
-    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
-    val shape = if (mine) RoundedCornerShape(14.dp) else RoundedCornerShape(14.dp, 14.dp, 14.dp, 0.dp)
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
-    ) {
-        Box(Modifier.widthIn(max = maxWidth).border(if (mine) 2.5.dp else 1.dp, Ink, shape).padding(horizontal = 12.dp, vertical = 8.dp)) {
-            TextMMD(text, style = MaterialTheme.typography.bodyLarge)
+fun KompaktButton(text: String, filled: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(Kompakt.ButtonCorner)
+    val m = modifier.heightIn(min = Kompakt.ButtonHeight)
+    if (filled) {
+        ButtonMMD(onClick = onClick, modifier = m, enabled = enabled, shape = shape) {
+            TextMMD(text, style = MaterialTheme.typography.labelLarge, color = Paper)
         }
-        if (!time.isNullOrBlank()) {
-            TextMMD(time, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
+    } else {
+        OutlinedButtonMMD(onClick = onClick, modifier = m, enabled = enabled, shape = shape, border = BorderStroke(2.dp, Ink)) {
+            TextMMD(text, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
 
-/** "•  23 Nov  •" before the first message of each day. */
+/**
+ * Stock bottom sheet for ⋮ menus and confirmations: full width, white, 3 dp black top border,
+ * no radius, shadow, scrim or animation. Stacked outlined actions, then a filled Cancel.
+ * Place it last inside a full-screen Box so it draws over the screen.
+ */
 @Composable
-fun DaySeparator(day: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-        TextMMD("•  $day  •", style = MaterialTheme.typography.bodyMedium)
+fun KompaktSheet(title: String, actions: List<Pair<String, () -> Unit>>, onCancel: () -> Unit, cancelLabel: String = "Cancel") {
+    Box(
+        Modifier.fillMaxSize().clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onCancel,
+        ),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().background(Paper)
+                .drawBehind { drawRect(Ink, size = size.copy(height = 3.dp.toPx())) }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                .padding(start = 12.dp, end = 12.dp, top = 3.dp + 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            TextMMD(title, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            actions.forEach { (label, action) -> KompaktButton(label, filled = false, modifier = Modifier.fillMaxWidth(), onClick = action) }
+            KompaktButton(cancelLabel, filled = true, modifier = Modifier.fillMaxWidth(), onClick = onCancel)
+        }
+    }
+}
+
+/** Empty state: illustration, 25 sp Black headline, 21 sp Medium body, one outlined button. */
+@Composable
+fun EmptyState(headline: String, body: String, action: Pair<String, () -> Unit>?, illustration: (@Composable () -> Unit)? = null) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+    ) {
+        illustration?.invoke()
+        TextMMD(headline, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        TextMMD(body, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+        action?.let { (label, onClick) -> KompaktButton(label, filled = false, onClick = onClick) }
+    }
+}
+
+/**
+ * One message as in Messages: white, 12 dp corners, one square tail corner.
+ * Received: left, 1 dp, square bottom-start. Sent: right, 2 dp, square bottom-end. Selected: 3.5 dp.
+ */
+@Composable
+fun MessageBubble(text: String, mine: Boolean, time: String?, selected: Boolean = false, sameAuthorAsNext: Boolean = false) {
+    val r = 12.dp
+    val shape = if (mine) RoundedCornerShape(r, r, 0.dp, r) else RoundedCornerShape(r, r, r, 0.dp)
+    val stroke = when { selected -> 3.5.dp; mine -> 2.dp; else -> 1.dp }
+    Column(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = if (sameAuthorAsNext) 2.dp else 18.dp),
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
+    ) {
+        Box(
+            Modifier.widthIn(max = (LocalConfiguration.current.screenWidthDp * 0.8f).dp)
+                .border(stroke, Ink, shape).padding(horizontal = 10.dp, vertical = 8.dp),
+        ) { TextMMD(text, style = MaterialTheme.typography.bodyMedium) }
+        if (!time.isNullOrBlank()) TextMMD(time, Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -300,7 +365,7 @@ fun MessageField(value: String, onValueChange: (String) -> Unit, placeholder: St
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
-        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink),
+        textStyle = MaterialTheme.typography.bodyLarge,
         maxLines = 4,
         cursorBrush = SolidColor(Ink),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -314,49 +379,44 @@ fun MessageField(value: String, onValueChange: (String) -> Unit, placeholder: St
     )
 }
 
-/** Centred dialog: white, 3 dp frame, bold title, outlined secondary + filled primary. */
+/** Bottom bar: 3 dp rule, then a padded row (compose field + send, or a control pad). */
 @Composable
-fun KompaktDialogBox(
-    title: String,
-    body: String,
-    primary: Pair<String, () -> Unit>,
-    secondary: Pair<String, () -> Unit>? = null,
-) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(
-            Modifier.fillMaxWidth().background(Paper).border(3.dp, Ink).padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            TextMMD(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            TextMMD(body, textAlign = TextAlign.Center)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                secondary?.let { (text, action) -> OutlinedButtonMMD(onClick = action) { TextMMD(text) } }
-                ButtonMMD(onClick = primary.second) { TextMMD(primary.first) }
-            }
+fun KompaktBottomBar(content: @Composable RowScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Paper)) {
+        HorizontalDividerMMD(thickness = Kompakt.BarRule, color = Ink)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
+    }
+}
+
+/** Outlined 40 dp square, 2 dp stroke, 10 dp corners, 24 dp icon, 48 dp target (send button, arrow pads). */
+@Composable
+fun OutlinedIconButton(icon: ImageVector, description: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier.size(Kompakt.Touch).clickable(enabled = enabled, onClickLabel = description, onClick = onClick), contentAlignment = Alignment.Center) {
+        val ink = if (enabled) Ink else Ink.copy(alpha = 0.3f)
+        Box(Modifier.size(40.dp).border(2.dp, ink, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+            Icon(icon, description, tint = ink, modifier = Modifier.size(24.dp))
         }
     }
 }
 
-// Icons: Material Symbols path data (Apache 2.0), inlined so no icons artifact is needed.
-private fun icon(name: String, pathData: String): ImageVector =
-    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).addPath(addPathNodes(pathData), fill = SolidColor(Ink)).build()
+// Line icons drawn like the stock ones: 2 dp strokes, round caps.
+private fun lineIcon(name: String, block: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit) =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
+        path(stroke = SolidColor(Ink), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, pathBuilder = block)
+    }.build()
 
-val BackIcon = icon("Back", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z")
-val MoreIcon = icon(
-    "More",
-    "M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 0.9,2 2,2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 " +
-        "2,-0.9 2,-2 -0.9,-2 -2,-2zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z",
-)
-val AddIcon = icon("Add", "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
-val RefreshIcon = icon(
-    "Refresh",
-    "M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 " +
-        "7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 " +
-        "4.22,1.78L13,11h7V4l-2.35,2.35z",
-)
-
-/** The stock send icon: a hollow paper plane, drawn as a stroke. */
+val PlusIcon = lineIcon("Plus") { moveTo(3f, 12f); lineTo(21f, 12f); moveTo(12f, 3f); lineTo(12f, 21f) }
+val BackIcon = lineIcon("Back") { moveTo(20f, 12f); lineTo(4f, 12f); moveTo(11f, 5f); lineTo(4f, 12f); lineTo(11f, 19f) }
+val ChevronRightIcon = lineIcon("Chevron") { moveTo(9f, 5f); lineTo(16f, 12f); lineTo(9f, 19f) }
+val MoreIcon: ImageVector = ImageVector.Builder("More", 24.dp, 24.dp, 24f, 24f).addPath(
+    addPathNodes("M12,8a2,2 0 1,0 0,-4a2,2 0 1,0 0,4zM12,14a2,2 0 1,0 0,-4a2,2 0 1,0 0,4zM12,20a2,2 0 1,0 0,-4a2,2 0 1,0 0,4z"),
+    fill = SolidColor(Ink),
+).build()
 val SendOutlineIcon: ImageVector = ImageVector.Builder("SendOutline", 24.dp, 24.dp, 24f, 24f).apply {
     path(stroke = SolidColor(Ink), strokeLineWidth = 1.6f, strokeLineJoin = StrokeJoin.Round, strokeLineCap = StrokeCap.Round) {
         moveTo(3f, 4f); lineTo(21f, 12f); lineTo(3f, 20f); lineTo(6f, 12f); close()
@@ -365,54 +425,53 @@ val SendOutlineIcon: ImageVector = ImageVector.Builder("SendOutline", 24.dp, 24.
 }.build()
 ```
 
-For other icons use Material Symbols *outlined* path data the same way, or
-`androidx.compose.material.icons.Icons.Outlined.*` (core set only). For directions use MMD's
-`R.drawable.chevron_filled_{left,up,down,right}` via `painterResource`.
+For other icons, draw them the same way or use Material Symbols *outlined* path data. For
+directions use MMD's `R.drawable.chevron_filled_{left,up,down,right}`.
 
 ## Screen recipes
 
-**List screen** (Messages list, Hermes sessions, ntfy topics):
+**List screen** (conversations, sessions, topics):
 
 ```kotlin
-Column(Modifier.fillMaxSize()) {
-    KompaktTopBar(title = "Messages") {
-        BarIcon(RefreshIcon, "Refresh") { refresh() }
-        Box {
-            BarIcon(MoreIcon, "More options") { menuOpen = true }
-            DropdownMenuMMD(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItemMMD(text = { TextMMD("Settings") }, onClick = { menuOpen = false; onSettings() })
-            }
+Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        KompaktTopBar("Messages") {
+            BarIcon(MoreIcon, "More options") { sheet = true }
+            CreateBarButton("New message") { onNew() }
         }
-        PrimaryBarIcon(AddIcon, "New") { onNew() }
+        if (status.isNotBlank()) TextMMD(status, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
+        if (rows.isEmpty()) EmptyState("No messages", "Start a conversation with +.", null)
+        else LazyColumnMMD(Modifier.fillMaxSize()) {
+            items(rows, key = { it.id }) { r -> ConversationRow(r.name, r.time, r.preview) { onOpen(r) } }
+        }
     }
-    if (status.isNotBlank()) TextMMD(status, Modifier.padding(16.dp))
-    LazyColumnMMD(Modifier.fillMaxSize()) {
-        items(rows, key = { it.id }) { r ->
-            KompaktListRow(r.title, meta = r.time, subtitle = r.preview) { onOpen(r) }
-            DashedRowDivider()
-        }
+    if (sheet) {
+        BackHandler { sheet = false }
+        KompaktSheet("Options", listOf("Refresh" to { sheet = false; refresh() }, "Settings" to { sheet = false; onSettings() }), onCancel = { sheet = false })
     }
 }
 ```
 
-**Conversation screen**: `KompaktTopBar(label = who, title = subject, onBack = …)`, then a
-`LazyColumnMMD(Modifier.weight(1f), scrollStep = 0, isScrollbarVisible = false)` of
-`DaySeparator` + `MessageBubble`, a one-line status, and
-`KompaktBottomBar { MessageField(Modifier.weight(1f)); OutlinedIconButton(SendOutlineIcon, "Send") }`.
-Scroll to the last item with `listState.scrollToItem(last)` (no `animateScrollToItem`).
+**Conversation screen**: `KompaktTopBar(contactName, onBack = …)`, a
+`LazyColumnMMD(Modifier.weight(1f), scrollStep = 0, isScrollbarVisible = false)` of day
+markers and `MessageBubble`s, a one-line status, then
+`KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconButton(SendOutlineIcon, "Send") { send() } }`.
+Jump to the newest with `listState.scrollToItem(last)`.
 
-**Settings screen**: `KompaktTopBar(label = appName, title = "Settings", onBack = …)`, a
-`verticalScroll` column of `SectionHeader` + rows separated by `DashedRowDivider()` (none after
-the last in a section), `TextFieldMMD` for input, and at the end `OutlinedButtonMMD("Test")`
-next to `ButtonMMD("Save")`.
+**Settings screen**: `KompaktTopBar("Settings", onBack = …)`, then a scrolling column of
+`SectionHeader` and `KompaktRow`s: `trailing = { SwitchMMD(checked, onCheckedChange = null) }`
+with `onClick` toggling; `trailing = { Icon(ChevronRightIcon, null) }` for sub-pages; a radio
+sub-screen of `KompaktRow(minHeight = 62.dp, leading = { RadioButtonMMD(selected, null) })`.
+Form fields use `TextFieldMMD`, and actions are `KompaktButton("Test", filled = false)` next to
+`KompaktButton("Save", filled = true)`.
 
-**Short fixed choice list that must fit** (Twofold tile style): rows with `Modifier.weight(1f)`,
-`RadioButtonMMD(selected, onClick = null)` inside `Modifier.selectable(...)`, bold label, one
-line description, `DashedRowDivider` between rows.
+**Short fixed choice list that must fit** (Twofold tile style): rows sharing the height
+with `Modifier.weight(1f)`, radio leading, dashed dividers between.
 
 ## Review
 
-Before you finish, run through the checklist in `kompakt-eink-design`, then grep your diff
-for `animate`, `Animated`, `Crossfade`, `shadow`, `Elevation = [1-9]`, `ripple`, `Color(0x`
-other than pure black or white, `alpha =` other than 0.3f on disabled ink, and
-`FloatingActionButton`. Build on a real Kompakt when you can: the emulator hides ghosting.
+Run the checklist in `kompakt-eink-design`, then grep the diff for `animate`, `Animated`,
+`Crossfade`, `shadow`, `Elevation = [1-9]`, `ripple`, `DropdownMenu`, `AlertDialog`,
+`ModalBottomSheet`, `FloatingActionButton`, `Color(0x` other than black or white, and
+`fontWeight = FontWeight.Bold` (the stock weight is Black). Look at the result on a real
+Kompakt; emulators hide ghosting.
