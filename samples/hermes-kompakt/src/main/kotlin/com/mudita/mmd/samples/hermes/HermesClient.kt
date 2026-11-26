@@ -128,6 +128,24 @@ class HermesClient(
         }.filter { it.id.isNotBlank() }
 
     /** Pins or unpins a session on the server; it then sorts to the top of every client's list. */
+    /**
+     * The profile's model catalog (`GET /api/model/options`, configured providers only) and the
+     * profile's default model, for the chat's model picker.
+     */
+    suspend fun modelOptions(): Pair<List<ProviderModels>, ModelChoice?> = withContext(Dispatchers.IO) {
+        val o = JSONObject(requestOk("GET", "/api/model/options?include_unconfigured=false"))
+        val providers = (o.optJSONArray("providers") ?: JSONArray()).objects().map { p ->
+            ProviderModels(
+                slug = p.str("slug", "id"),
+                name = p.str("name", "label", "slug"),
+                models = (p.optJSONArray("models") ?: JSONArray()).let { a -> (0 until a.length()).map { a.optString(it) } },
+                limited = p.opt("limit").let { it != null && it != JSONObject.NULL },
+            )
+        }
+        val default = o.str("model").takeIf { it.isNotBlank() }?.let { ModelChoice(o.str("provider"), it) }
+        providers to default
+    }
+
     /** Deletes a session on the server, with its messages. */
     suspend fun deleteSession(sessionId: String) = withContext(Dispatchers.IO) {
         requestOk("DELETE", "/api/sessions/${enc(sessionId)}")
@@ -185,7 +203,7 @@ class HermesClient(
      * redraw per token: callers should collect into a buffer and render on [ChatEvent.Done]
      * (or at a slow, fixed cadence).
      */
-    fun chatStream(sessionId: String, input: String): Flow<ChatEvent> = flow {
+    fun chatStream(sessionId: String, input: String, model: ModelChoice? = null): Flow<ChatEvent> = flow {
         val conn = open("POST", "/api/sessions/${enc(sessionId)}/chat/stream")
         coroutineScope {
             // A blocking readLine() ignores cancellation (keepalives never reach an emit), so
@@ -203,7 +221,16 @@ class HermesClient(
                 // The server sends `: keepalive` every 10 s, so a minute of silence means the
                 // connection is gone; the run itself can still take as long as it needs.
                 conn.readTimeout = 60_000
-                writeJson(conn, JSONObject().put("input", input))
+                writeJson(
+                    conn,
+                    JSONObject().put("input", input).apply {
+                        // A one-off override for this run; without it Hermes uses the profile's model.
+                        if (model != null) {
+                            put("model", model.model)
+                            if (model.provider.isNotBlank()) put("provider", model.provider)
+                        }
+                    },
+                )
                 // disconnect() is a no-op before the request starts, so re-check once it has.
                 ensureActive()
                 val code = conn.responseCode

@@ -131,6 +131,16 @@ object SettingsStore {
             .putStringSet("hiddenSessionGroups", hidden.map { it.name }.toSet()).apply()
     }
 
+    /** The model chosen for one session (see [sessionModelKey]); null means the profile's default. */
+    fun sessionModel(context: Context, key: String): ModelChoice? =
+        ModelChoice.decode(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, null))
+
+    fun setSessionModel(context: Context, key: String, choice: ModelChoice?) {
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (choice == null) edit.remove(key) else edit.putString(key, choice.encode())
+        edit.apply()
+    }
+
     fun setActiveProfile(context: Context, slug: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("activeProfile", slug).apply()
     }

@@ -318,6 +318,11 @@ fun ChatScreen(
         HermesClient(settings, settings.profile(profileSlug))
     }
     val profileName = client.profileLabel()
+    // The model this session runs on: saved per server, profile and session; null is the
+    // profile's default. Sent with each run as a one-off override, so "Profile default" is
+    // simply not sending one.
+    val modelKey = remember { sessionModelKey(SettingsStore.load(context).baseUrl, profileSlug, sessionId) }
+    var model by remember { mutableStateOf(SettingsStore.sessionModel(context, modelKey)) }
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
@@ -391,7 +396,7 @@ fun ChatScreen(
                 // Tools this turn used, for the "Used …" line placed before the reply.
                 val usedTools = mutableListOf<String>()
                 runCatching {
-                    client.chatStream(sessionId, text).collect { e ->
+                    client.chatStream(sessionId, text, model).collect { e ->
                         when (e) {
                             // Show which tool is running, but don't repaint per token.
                             is ChatEvent.Tool -> {
@@ -404,7 +409,10 @@ fun ChatScreen(
                                 working = null
                                 if (shownTitle.isBlank()) refreshTitle()
                             }
-                            is ChatEvent.Failed -> working = "Run failed: ${e.reason}"
+                            is ChatEvent.Failed -> working = model?.let { m ->
+                                // A model the server can't route or the provider refuses fails the run.
+                                "Run failed on ${m.model}: ${e.reason} Pick another model in ⋮."
+                            } ?: "Run failed: ${e.reason}"
                             is ChatEvent.Delta -> Unit
                         }
                     }
@@ -423,6 +431,27 @@ fun ChatScreen(
 
     var showTools by remember { mutableStateOf(SettingsStore.showToolMessages(context)) }
     var chatSheet by remember { mutableStateOf(false) }
+    var modelSheet by remember { mutableStateOf(false) }
+    // Loaded when the model sheet opens: the choices and the profile's default.
+    var catalog by remember { mutableStateOf<Pair<List<ModelChoice>, ModelChoice?>?>(null) }
+    var catalogError by remember { mutableStateOf<String?>(null) }
+
+    fun openModelSheet() {
+        modelSheet = true
+        if (catalog != null) return
+        catalogError = null
+        scope.launch {
+            runCatching { client.modelOptions() }
+                .onSuccess { (providers, default) -> catalog = modelChoices(providers) to default }
+                .onFailure { catalogError = connectionError("Couldn't load models", it) }
+        }
+    }
+
+    fun chooseModel(choice: ModelChoice?) {
+        model = choice
+        SettingsStore.setSessionModel(context, modelKey, choice)
+        modelSheet = false
+    }
     val shown = visibleMessages(messages, showTools)
 
     // Newest at the bottom, like a Messages thread. Opening (and each history load) lands on
@@ -444,7 +473,12 @@ fun ChatScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // Like a Messages thread: who you're talking to (the profile) above the conversation.
-        MessagesTopBar(label = profileName, title = sessionTitleOrPlaceholder(shownTitle), onBack = onBack) {
+        MessagesTopBar(
+            // The model shows only when this chat overrides the profile's default.
+            label = model?.let { "$profileName · ${it.model}" } ?: profileName,
+            title = sessionTitleOrPlaceholder(shownTitle),
+            onBack = onBack,
+        ) {
             BarIcon(Icons.Filled.MoreVert, "More") { chatSheet = true }
         }
         val timeFmt = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
@@ -519,9 +553,32 @@ fun ChatScreen(
     }
         if (chatSheet) {
             KompaktSheet("Chat", onDismiss = { chatSheet = false }) {
+                SheetButton("Model: ${model?.model ?: "Profile default"}") {
+                    chatSheet = false
+                    openModelSheet()
+                }
                 SheetToggle("Show tool and system messages", checked = showTools) {
                     showTools = it
                     SettingsStore.setShowToolMessages(context, it)
+                }
+            }
+        }
+        if (modelSheet) {
+            KompaktSheet("Model", onDismiss = { modelSheet = false }) {
+                val c = catalog
+                when {
+                    catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                    c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)
+                    else -> Column(
+                        Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ChoiceButton(
+                            "Profile default" + (c.second?.let { " (${it.model})" } ?: ""),
+                            selected = model == null,
+                        ) { chooseModel(null) }
+                        c.first.forEach { m -> ChoiceButton(m.label, selected = m == model) { chooseModel(m) } }
+                    }
                 }
             }
         }
@@ -553,6 +610,33 @@ private fun EventLine(label: String, text: String) {
         TextMMD(text, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
     }
     DashedRowDivider()
+}
+
+/** A picker row: full-width outlined 48 dp button, label at the start, bold with a check when selected. */
+@Composable
+private fun ChoiceButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .border(if (selected) 3.dp else 2.dp, Color.Black, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextMMD(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (selected) {
+            Icon(Icons.Outlined.Check, contentDescription = "Current model", tint = Color.Black, modifier = Modifier.padding(start = 4.dp).size(24.dp))
+        }
+    }
 }
 
 /** A sheet row with a label and a switch; the whole 48 dp row toggles it. */
