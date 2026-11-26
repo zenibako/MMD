@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.DateRange
@@ -53,12 +54,17 @@ import com.mudita.mmd.components.text.TextMMD
 /** Rule under the top bar and over the compose bar, as thick as the Messages app's. */
 private val BarRule = 3.dp
 
-/** Top bar: optional back arrow, a small [label] above a bold [title], icon [actions]. */
+/**
+ * Top bar: optional back arrow, a small [label] above a bold [title], icon [actions]. With
+ * [onTitleClick] the title is itself a button, marked by a small arrow after it.
+ */
 @Composable
 fun MessagesTopBar(
     label: String,
     title: String,
     onBack: (() -> Unit)? = null,
+    onTitleClick: (() -> Unit)? = null,
+    titleClickLabel: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -71,17 +77,36 @@ fun MessagesTopBar(
             } else {
                 Box(Modifier.size(8.dp))
             }
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .then(
+                        if (onTitleClick != null) {
+                            Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 if (label.isNotBlank()) {
                     TextMMD(label, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
-                TextMMD(
-                    title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextMMD(
+                        title,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (onTitleClick != null) {
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(28.dp))
+                    }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }

@@ -3,6 +3,8 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material.icons.filled.MoreVert
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,7 +35,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -131,18 +132,22 @@ fun SessionsScreen(
     }
 
     var profileSheet by remember { mutableStateOf(false) }
+    var moreSheet by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // Like the Messages list: one bold title (the profile, as Messages shows "SMS"), plain
             // icons, and the main action as a filled "+".
-            MessagesTopBar(label = "", title = profileName) {
-                // Opens the profile sheet; with only the default profile there is nothing to switch.
-                if (settings.profiles.size > 1) {
-                    BarIcon(Icons.Outlined.Person, "Switch profile") { profileSheet = true }
-                }
-                BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
-                BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
+            // The profile name is the switcher (with more than one profile), so the name gets the
+            // width a separate icon would take.
+            MessagesTopBar(
+                label = "",
+                title = profileName,
+                onTitleClick = if (settings.profiles.size > 1) ({ profileSheet = true }) else null,
+                titleClickLabel = "Switch profile",
+            ) {
+                // Refresh and Settings live in the ⋮ sheet, leaving the width to the name.
+                BarIcon(Icons.Filled.MoreVert, "More") { moreSheet = true }
                 PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
             }
             if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
@@ -196,6 +201,18 @@ fun SessionsScreen(
                 },
                 onDismiss = { profileSheet = false },
             )
+        }
+        if (moreSheet) {
+            KompaktSheet("Menu", onDismiss = { moreSheet = false }) {
+                SheetTextButton("Refresh") {
+                    moreSheet = false
+                    refresh()
+                }
+                SheetTextButton("Settings") {
+                    moreSheet = false
+                    onSettings()
+                }
+            }
         }
     }
 }
@@ -502,23 +519,16 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
 }
 
 /**
- * Profile picker as the Kompakt's stock apps show menus: a full-width sheet at the bottom with
- * a thick top rule, a centred title, one full-width outlined button per profile (the current
- * one bold with a check) and a black Cancel. Names get the whole button width and may wrap.
+ * A menu as the Kompakt's stock apps show them: a full-width sheet at the bottom with a thick
+ * top rule, a centred [title], the [content] buttons and a black Cancel. Back and a tap above
+ * the sheet close it; there is no dimming, which E Ink renders as grey.
  */
 @Composable
-private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> Unit, onDismiss: () -> Unit) {
+private fun KompaktSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     BackHandler(onBack = onDismiss)
-    // Names come from each profile's /v1/models; fetch the missing ones as the sheet opens.
-    LaunchedEffect(Unit) {
-        settings.profiles
-            .filter { ProfileNames.names[it.slug] == null }
-            .forEach { p -> launch { HermesClient(settings, p).profileName() } }
-    }
     Box(
         Modifier
             .fillMaxSize()
-            // Tapping above the sheet closes it; no dimming, which E Ink renders as grey.
             .clickable(interactionSource = null, indication = null, onClick = onDismiss),
         contentAlignment = Alignment.BottomCenter,
     ) {
@@ -535,33 +545,13 @@ private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> 
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextMMD(
-                    "Profiles",
+                    title,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center,
                 )
-                settings.profiles.forEach { p ->
-                    val active = p.slug == settings.active.slug
-                    SheetButton(onClick = { onSelect(p) }) {
-                        TextMMD(
-                            ProfileNames.label(p),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (active) {
-                            Icon(
-                                Icons.Outlined.Check,
-                                contentDescription = "Current profile",
-                                tint = Color.Black,
-                                modifier = Modifier.padding(start = 4.dp).size(24.dp),
-                            )
-                        }
-                    }
-                }
+                content()
                 SheetButton(onClick = onDismiss, filled = true) {
                     TextMMD(
                         "Cancel",
@@ -570,6 +560,48 @@ private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> 
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A sheet button with a plain label, as in the stock apps' menus. */
+@Composable
+private fun SheetTextButton(label: String, onClick: () -> Unit) {
+    SheetButton(onClick = onClick) {
+        TextMMD(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** Profile picker: one full-width button per profile, the current one bold with a check. */
+@Composable
+private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> Unit, onDismiss: () -> Unit) {
+    // Names come from each profile's /v1/models; fetch the missing ones as the sheet opens.
+    LaunchedEffect(Unit) {
+        settings.profiles
+            .filter { ProfileNames.names[it.slug] == null }
+            .forEach { p -> launch { HermesClient(settings, p).profileName() } }
+    }
+    KompaktSheet("Profiles", onDismiss) {
+        settings.profiles.forEach { p ->
+            val active = p.slug == settings.active.slug
+            SheetButton(onClick = { onSelect(p) }) {
+                TextMMD(
+                    ProfileNames.label(p),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (active) {
+                    Icon(
+                        Icons.Outlined.Check,
+                        contentDescription = "Current profile",
+                        tint = Color.Black,
+                        modifier = Modifier.padding(start = 4.dp).size(24.dp),
                     )
                 }
             }
