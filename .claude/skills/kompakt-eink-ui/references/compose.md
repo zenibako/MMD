@@ -1,11 +1,6 @@
----
-name: kompakt-eink-compose
-description: Build Kompakt-native E Ink screens in Jetpack Compose with MMD (ThemeMMD, *MMD components). Use when writing or reviewing Compose UI for the Mudita Kompakt or any app in this repo.
----
-
 # Kompakt E Ink screens in Compose + MMD
 
-Read `kompakt-eink-design` first: it holds the rules and the stock numbers. This skill is
+Read `SKILL.md` first: it holds the rules and the stock numbers. This reference is
 how to meet them with MMD. Mudita's own Compose apps appear to use MMD but override some
 of its defaults, so the reference file below does the same: it keeps MMD's theme, lists,
 toggles and buttons, and adds the stock type scale, top bar, dashed divider, bottom sheet
@@ -470,7 +465,7 @@ with `Modifier.weight(1f)`, radio leading, dashed dividers between.
 
 ## Review
 
-Run the checklist in `kompakt-eink-design`, then grep the diff for `animate`, `Animated`,
+Run the checklist in `SKILL.md`, then grep the diff for `animate`, `Animated`,
 `Crossfade`, `shadow`, `Elevation = [1-9]`, `ripple`, `DropdownMenu`, `AlertDialog`,
 `ModalBottomSheet`, `FloatingActionButton`, `Color(0x` other than black or white, and
 `fontWeight = FontWeight.Bold` (the stock weight is Black). Look at the result on a real

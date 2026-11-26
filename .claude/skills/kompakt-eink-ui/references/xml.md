@@ -1,11 +1,6 @@
----
-name: kompakt-eink-xml
-description: Apply the Kompakt-native E Ink look to Android XML-view apps (Material Components, AppCompat, RecyclerView, Preferences), usually as a build flavor of an existing app. Use when theming or reviewing a View-based app for the Mudita Kompakt.
----
-
 # Kompakt E Ink look for Android XML views
 
-Read `kompakt-eink-design` first for the rules and stock numbers. This skill is how to get
+Read `SKILL.md` first for the rules and stock numbers. This reference is how to get
 there in a classic View app with as little Kotlin as possible. It comes from the ntfy
 Kompakt fork (`zenibako/ntfy-android`, branch `kompakt-eink`), corrected against the stock
 Messages, Contacts and Phone apps, which are View apps themselves and share a Mudita XML
@@ -246,7 +241,7 @@ Window background white, `windowShowWallpaper` false.
 
 ## Review
 
-Run the checklist in `kompakt-eink-design`. Then grep `src/<flavor>/res` and the layouts it
+Run the checklist in `SKILL.md`. Then grep `src/<flavor>/res` and the layouts it
 inherits from `main` for `elevation`, `cardElevation`, `rippleColor`,
 `?attr/selectableItemBackground` (a ripple), `liftOnScroll`, `animateLayoutChanges`,
 `PopupMenu`, `AlertDialog`, `@color/` values that are not black, white or transparent, and

@@ -1,9 +1,9 @@
 ---
-name: kompakt-eink-design
-description: Design rules for E Ink apps on the Mudita Kompakt that look native next to its stock apps (MMD look). Use when designing, building or reviewing any Kompakt or MMD screen, in Compose or Android XML.
+name: kompakt-eink-ui
+description: Design and build Mudita Kompakt E Ink app UI that looks native next to the stock apps (MMD look), in Compose with MMD or Android XML views, and audit it against the phone. Use when designing, building or reviewing any Kompakt or MMD screen.
 ---
 
-# Kompakt E Ink design
+# Kompakt E Ink UI
 
 These rules make a third-party app look and behave like the Kompakt's own apps. The
 numbers come from the stock apps themselves (MuditaOS K build 20261116): decoded resources
@@ -12,10 +12,15 @@ Notes, Calendar, Alarm, Meditation, Weather and the launcher. See
 `docs/kompakt-ui-audit.md` in the MMD repo (zenibako/MMD) for the evidence and for how the Hermes,
 Twofold and ntfy Kompakt apps compared.
 
-Implementation skills carry these numbers into code:
+This file holds the rules and numbers. Read the reference that fits the task:
 
-- Compose with MMD: `kompakt-eink-compose`
-- Android XML views: `kompakt-eink-xml`
+| Task | Read |
+|---|---|
+| Building or reviewing Compose UI (anything using `ThemeMMD`, `*MMD` components, `@Composable`) | [references/compose.md](references/compose.md): the drop-in `KompaktUi.kt`, component choices, screen recipes |
+| Theming or reviewing an Android XML-view app (layouts, `themes.xml`, Material Components, RecyclerView, Preferences), usually as a build flavor | [references/xml.md](references/xml.md): theme items, drawables, layouts |
+| Checking a rule or an app against the real phone, over adb | [references/audit.md](references/audit.md): how to decode stock APKs, measure screens and drive the phone safely |
+
+For a design question with no code, this file is enough.
 
 Mudita's own Compose apps appear to be built on MMD (they ship MMD's exact Lato files), but
 they **override several MMD defaults**: heavier type, dashed dividers, taller buttons, a
@@ -222,6 +227,8 @@ paths we could reach. ⋮ and confirmations open a bottom sheet:
 
 ## Review checklist
 
+Run this on every screen, then the grep list in the Compose or XML reference.
+
 Every "no" is a defect.
 
 - [ ] Only black and white, apart from a faint disabled glyph?
@@ -240,23 +247,4 @@ Every "no" is a defect.
 - [ ] Fits 360 dp wide; nothing hidden under the 36 dp status bar?
 - [ ] Light theme even with the system dark setting on?
 
-## Auditing against the stock apps
-
-1. Pull the stock APK (`adb shell pm path com.mudita.<app>`, then `adb pull`). This is
-   read-only. Decode its resources (apktool, aapt2, or a small `resources.arsc` reader) and
-   read `values/dimens.xml`, `styles.xml` and the `drawable/` shapes. Messages, Contacts,
-   Phone, Calendar and Alarm keep their values there; the Compose apps (Notes, Settings,
-   launcher, Meditation, Weather) keep them in code, so measure those on screen.
-2. To measure on screen: `adb exec-out screencap -p > s.png` and
-   `adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml`. Divide pixel
-   bounds by 1.33 for dp. Anti-aliased corners read about 2 px small.
-3. **Driving the owner's phone safely.** One input per step; screenshot and check
-   `dumpsys activity activities | grep mResumedActivity` before every tap. Open screens
-   with `am start` or `monkey -p <pkg>` instead of tapping where possible. Never tap inside
-   a Phone or Messages conversation or a call-log row (call and send buttons live there).
-   Never toggle, pick, start, save or delete; cancel every sheet. Wireless-debugging ports
-   change often; ask the owner for the current one.
-4. Personal content appears on screen. Record layout only, never content, and delete the
-   screenshots and `/sdcard/ui.xml` when done.
-5. Record findings as: screen, token, stock value, our value, verdict. Update this skill
-   when the stock apps show a better rule.
+To audit against the phone, see [references/audit.md](references/audit.md).

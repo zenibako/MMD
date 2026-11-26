@@ -5,7 +5,7 @@ November 2026. Mudita Kompakt, MuditaOS K build `Kompakt:12/SP1A.210812.016/2026
 
 This compares the three apps we restyled for the Kompakt (the Hermes chat sample and the
 Twofold game in this repo, and the ntfy Kompakt fork) with the phone's own apps, and records
-the stock values the `kompakt-eink-*` skills now use.
+the stock values the `kompakt-eink-ui` skill now uses.
 
 ## Method
 
@@ -20,7 +20,7 @@ the stock values the `kompakt-eink-*` skills now use.
   date picker was reachable without creating data.
 - Only layout was recorded. Screens were opened and backed out of; nothing was changed,
   except one accidental outgoing call to an SMS short code during the first capture pass,
-  which was reported at once and led to the safety rules now in the design skill.
+  which was reported at once and led to the safety rules now in the skill's audit reference.
 
 ## What the stock apps are built with
 
