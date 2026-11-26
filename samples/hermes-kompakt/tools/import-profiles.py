@@ -54,9 +54,28 @@ def answers(url: str, slug: str, key: str) -> int:
         return 0
 
 
+class AdbError(Exception):
+    pass
+
+
 def adb(serial, *args, **kw):
     cmd = ["adb"] + (["-s", serial] if serial else []) + list(args)
-    return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if r.returncode != 0:
+        raise AdbError(f"adb {' '.join(args[:2])} failed: {(r.stderr or r.stdout).strip()}")
+    return r
+
+
+def connect(serial):
+    """Wireless-debugging serials (host:port) must be connected before use."""
+    if serial and ":" in serial:
+        out = subprocess.run(["adb", "connect", serial], capture_output=True, text=True)
+        text = (out.stdout + out.stderr).strip()
+        if "connected to" not in text:
+            raise AdbError(f"adb connect {serial}: {text or 'failed'} (check the port in Wireless debugging)")
+    state = subprocess.run(["adb"] + (["-s", serial] if serial else []) + ["get-state"], capture_output=True, text=True)
+    if state.stdout.strip() != "device":
+        raise AdbError(f"no adb device {serial or ''}: {(state.stderr or state.stdout).strip()}")
 
 
 def main() -> int:
@@ -92,12 +111,21 @@ def main() -> int:
         print(f"Dry run: would import {', '.join(p['slug'] for p in profiles)}")
         return 0
 
+    try:
+        connect(a.serial)
+    except AdbError as e:
+        print(e, file=sys.stderr)
+        return 1
+
     fd, tmp = tempfile.mkstemp(suffix=".json")
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(profiles, f)
         adb(a.serial, "shell", "mkdir", "-p", os.path.dirname(IMPORT_PATH))
         adb(a.serial, "push", tmp, IMPORT_PATH)
+    except AdbError as e:
+        print(e, file=sys.stderr)
+        return 1
     finally:
         os.remove(tmp)
     # Restart the app so it merges the file (and deletes it) right away.
