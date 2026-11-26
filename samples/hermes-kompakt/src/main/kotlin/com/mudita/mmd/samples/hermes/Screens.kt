@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,8 @@ import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.text_field.TextFieldMMD
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -70,10 +73,22 @@ fun SessionsScreen(
     var status by remember { mutableStateOf("Loading…") }
     val fmt = remember { RowTimeFormat() }
 
-    fun refresh() = scope.launch {
-        status = "Loading…"
-        status = runCatching { sessions = client.listSessions(); "" }
-            .getOrElse { "Could not reach Hermes: ${it.message}" }
+    val currentClient by rememberUpdatedState(client)
+    var refreshJob by remember { mutableStateOf<Job?>(null) }
+
+    fun refresh() {
+        refreshJob?.cancel()
+        val c = client
+        refreshJob = scope.launch {
+            status = "Loading…"
+            val result = runCatching { c.listSessions() }
+            // A late answer for a profile we've since switched away from must not land here:
+            // its session ids would be opened with the new profile's routes and key.
+            if (!isActive || c !== currentClient) return@launch
+            result
+                .onSuccess { sessions = it; status = "" }
+                .onFailure { status = "Could not reach Hermes: ${it.message}" }
+        }
     }
     LaunchedEffect(client) {
         sessions = emptyList()
@@ -166,46 +181,61 @@ fun ChatScreen(
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
-    var working by remember { mutableStateOf<String?>(null) }
+    var working by remember { mutableStateOf<String?>("Loading…") }
+
+    // Explicit flags rather than the status text, which changes while a turn runs.
+    var historyLoaded by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(sessionId) {
         runCatching { client.messages(sessionId) }
-            .onSuccess { messages.clear(); messages.addAll(it) }
+            .onSuccess {
+                messages.clear()
+                messages.addAll(it)
+                working = null
+            }
             .onFailure { working = "Could not load history: ${it.message}" }
+        // Sending waits for this, so the history snapshot can't replace a message sent meanwhile.
+        historyLoaded = true
     }
 
     fun send() {
         val text = draft.trim()
-        if (text.isEmpty() || working == "Thinking…") return
+        if (text.isEmpty() || !historyLoaded || sending) return
         // Close the keyboard so the reply has the whole screen.
         keyboard?.hide()
         focusManager.clearFocus()
         draft = ""
         messages.add(ChatMessage("user", text, System.currentTimeMillis()))
         working = "Thinking…"
+        sending = true
         scope.launch {
-            runCatching {
-                client.chatStream(sessionId, text).collect { e ->
-                    when (e) {
-                        // Show which tool is running, but don't repaint per token.
-                        is ChatEvent.Tool ->
-                            working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
-                        is ChatEvent.Done -> {
-                            e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
-                            working = null
+            try {
+                runCatching {
+                    client.chatStream(sessionId, text).collect { e ->
+                        when (e) {
+                            // Show which tool is running, but don't repaint per token.
+                            is ChatEvent.Tool ->
+                                working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
+                            is ChatEvent.Done -> {
+                                e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
+                                working = null
+                            }
+                            is ChatEvent.Failed -> working = "Run failed: ${e.reason}"
+                            is ChatEvent.Delta -> Unit
                         }
-                        is ChatEvent.Failed -> working = "Run failed: ${e.reason}"
-                        is ChatEvent.Delta -> Unit
+                    }
+                }.onFailure {
+                    working = if ((it as? HermesApiException)?.code == 409) {
+                        "This session belongs to another surface. Use Continue here."
+                    } else {
+                        "Send failed: ${it.message}"
                     }
                 }
-            }.onFailure {
-                working = if ((it as? HermesApiException)?.code == 409) {
-                    "This session belongs to another surface. Use Continue here."
-                } else {
-                    "Send failed: ${it.message}"
-                }
+            } finally {
+                sending = false
             }
         }
     }

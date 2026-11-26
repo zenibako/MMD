@@ -3,9 +3,12 @@ package com.mudita.mmd.samples.hermes
 import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -136,53 +139,67 @@ class HermesClient(
      */
     fun chatStream(sessionId: String, input: String): Flow<ChatEvent> = flow {
         val conn = open("POST", "/api/sessions/${enc(sessionId)}/chat/stream")
-        conn.setRequestProperty("Accept", "text/event-stream")
-        conn.readTimeout = 0 // server sends `: keepalive` every 10 s; the run can be long.
-        writeJson(conn, JSONObject().put("input", input))
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            throw HermesApiException(code, conn.errorStream?.bufferedReader()?.readText().orEmpty())
-        }
-        val text = StringBuilder()
-        conn.inputStream.bufferedReader().use { reader ->
-            for (e in reader.sseEvents()) {
-                Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}: ${e.data.take(300)}")
-                val data = runCatching { JSONObject(e.data) }.getOrNull() ?: JSONObject()
-                when (e.event.ifBlank { data.str("type", "event") }) {
-                    "assistant.delta", "message.delta", "response.output_text.delta" -> {
-                        val d = data.str("delta", "text", "content")
-                        text.append(d)
-                        emit(ChatEvent.Delta(d))
-                    }
-                    "tool.started", "tool.completed", "tool.failed" ->
-                        emit(ChatEvent.Tool(data.str("name", "tool"), e.event.substringAfter('.')))
-                    // Named progress frames (platforms.api_server.tool_progress_events).
-                    "hermes.tool.progress" -> emit(
-                        ChatEvent.Tool(
-                            name = data.str("name", "tool", "tool_name").ifBlank { "tool" },
-                            phase = "progress",
-                            detail = data.str("message", "status", "summary", "label"),
-                        ),
-                    )
-                    "run.completed" -> {
-                        val final = data.str("output", "final", "text", "content").ifBlank { text.toString() }
-                        emit(ChatEvent.Done(final))
-                        return@use
-                    }
-                    "run.failed", "run.cancelled", "run.interrupted" -> {
-                        Log.w("Hermes", "Run ended with ${e.event}: ${e.data.take(1000)}")
-                        val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
-                            ?.str("message", "detail", "type")
-                            ?: data.str("error", "message", "reason", "detail")
-                        emit(ChatEvent.Failed(reason.ifBlank { "${e.event} ${e.data.take(300)}" }))
-                        return@use
-                    }
+        coroutineScope {
+            // A blocking readLine() ignores cancellation (keepalives never reach an emit), so
+            // closing the connection is what unblocks it when the chat is left mid-run.
+            val closer = launch {
+                try {
+                    awaitCancellation()
+                } finally {
+                    conn.disconnect()
                 }
             }
-            // Stream ended without a terminal event.
-            emit(ChatEvent.Done(text.toString().ifBlank { null }))
+            try {
+                conn.setRequestProperty("Accept", "text/event-stream")
+                conn.readTimeout = 0 // server sends `: keepalive` every 10 s; the run can be long.
+                writeJson(conn, JSONObject().put("input", input))
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    throw HermesApiException(code, conn.errorStream?.bufferedReader()?.readText().orEmpty())
+                }
+                val text = StringBuilder()
+                conn.inputStream.bufferedReader().use { reader ->
+                    for (e in reader.sseEvents()) {
+                        Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}: ${e.data.take(300)}")
+                        val data = runCatching { JSONObject(e.data) }.getOrNull() ?: JSONObject()
+                        when (e.event.ifBlank { data.str("type", "event") }) {
+                            "assistant.delta", "message.delta", "response.output_text.delta" -> {
+                                val d = data.str("delta", "text", "content")
+                                text.append(d)
+                                emit(ChatEvent.Delta(d))
+                            }
+                            "tool.started", "tool.completed", "tool.failed" ->
+                                emit(ChatEvent.Tool(data.str("name", "tool"), e.event.substringAfter('.')))
+                            // Named progress frames (platforms.api_server.tool_progress_events).
+                            "hermes.tool.progress" -> emit(
+                                ChatEvent.Tool(
+                                    name = data.str("name", "tool", "tool_name").ifBlank { "tool" },
+                                    phase = "progress",
+                                    detail = data.str("message", "status", "summary", "label"),
+                                ),
+                            )
+                            "run.completed" -> {
+                                val final = data.str("output", "final", "text", "content").ifBlank { text.toString() }
+                                emit(ChatEvent.Done(final))
+                                return@use
+                            }
+                            "run.failed", "run.cancelled", "run.interrupted" -> {
+                                Log.w("Hermes", "Run ended with ${e.event}: ${e.data.take(1000)}")
+                                val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
+                                    ?.str("message", "detail", "type")
+                                    ?: data.str("error", "message", "reason", "detail")
+                                emit(ChatEvent.Failed(reason.ifBlank { "${e.event} ${e.data.take(300)}" }))
+                                return@use
+                            }
+                        }
+                    }
+                    // Stream ended without a terminal event.
+                    emit(ChatEvent.Done(text.toString().ifBlank { null }))
+                }
+            } finally {
+                closer.cancel() // also disconnects
+            }
         }
-        conn.disconnect()
     }.flowOn(Dispatchers.IO)
 
     // --- HTTP plumbing --------------------------------------------------------------
