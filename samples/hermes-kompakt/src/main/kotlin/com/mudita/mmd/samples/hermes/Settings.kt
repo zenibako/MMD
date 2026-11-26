@@ -49,8 +49,9 @@ object SettingsStore {
         )
     }
 
-    fun save(context: Context, s: HermesSettings) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+    /** Saves [s]; with [sync] the write is committed to disk and its success returned. */
+    fun save(context: Context, s: HermesSettings, sync: Boolean = false): Boolean {
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("baseUrl", normalizeUrl(s.baseUrl))
             .putString("profiles", writeProfiles(s.profiles))
             .putString("activeProfile", s.profile(s.activeProfile).slug)
@@ -60,7 +61,9 @@ object SettingsStore {
             .remove("ntfyTopic")
             .remove("ntfyToken")
             .remove("urgentPriority")
-            .apply()
+        if (sync) return edit.commit()
+        edit.apply()
+        return true
     }
 
     /** Name of the one-time import file in the app's external files dir. */
@@ -75,25 +78,30 @@ object SettingsStore {
     fun importPendingProfiles(context: Context): Int {
         val file = File(context.getExternalFilesDir(null) ?: return 0, IMPORT_FILE)
         if (!file.exists()) return 0
-        return try {
-            val incoming = JSONArray(file.readText()).objects()
+        val incoming = try {
+            JSONArray(file.readText()).objects()
                 .map { HermesProfile(it.optString("slug").trim(), it.optString("apiKey").trim()) }
                 .filter { isValidProfileSlug(it.slug) && it.apiKey.isNotBlank() }
                 .distinctBy { it.slug }
-            if (incoming.isNotEmpty()) {
-                val s = load(context)
-                val kept = s.profiles.filterNot { p -> incoming.any { it.slug == p.slug } }
-                save(context, s.copy(profiles = kept + incoming))
-            }
-            Log.i("Hermes", "Imported ${incoming.size} profile(s): ${incoming.joinToString { it.slug }}")
-            incoming.size
         } catch (e: Exception) {
+            // Unreadable, so a retry can't help; the file holds API keys, so don't leave it.
             Log.w("Hermes", "Profile import failed: ${e.javaClass.simpleName}")
-            0
-        } finally {
-            // The file holds API keys: never leave it behind, even if it couldn't be read.
             file.delete()
+            return 0
         }
+        if (incoming.isNotEmpty()) {
+            val s = load(context)
+            val kept = s.profiles.filterNot { p -> incoming.any { it.slug == p.slug } }
+            if (!save(context, s.copy(profiles = kept + incoming), sync = true)) {
+                // Keep the file so the next start retries the import.
+                Log.w("Hermes", "Profile import not saved; will retry on next start")
+                return 0
+            }
+        }
+        Log.i("Hermes", "Imported ${incoming.size} profile(s): ${incoming.joinToString { it.slug }}")
+        // Saved (or nothing to save): the keys are in the app's private settings now.
+        file.delete()
+        return incoming.size
     }
 
     fun setActiveProfile(context: Context, slug: String) {

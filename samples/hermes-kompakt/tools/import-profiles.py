@@ -129,10 +129,17 @@ def main() -> int:
     finally:
         os.remove(tmp)
     # Restart the app so it merges the file (and deletes it) right away.
-    adb(a.serial, "shell", "am", "force-stop", PACKAGE)
-    adb(a.serial, "shell", "am", "start", "-n", f"{PACKAGE}/.MainActivity")
-    time.sleep(5)
-    left = adb(a.serial, "shell", f"ls {IMPORT_PATH} 2>/dev/null || true").stdout.strip()
+    try:
+        adb(a.serial, "shell", "am", "force-stop", PACKAGE)
+        adb(a.serial, "shell", "am", "start", "-n", f"{PACKAGE}/.MainActivity")
+        time.sleep(5)
+        left = adb(a.serial, "shell", f"ls {IMPORT_PATH} 2>/dev/null || true").stdout.strip()
+    except AdbError as e:
+        print(
+            f"{e}. The import file was uploaded and is pending: reconnect and open Hermes once to finish the import.",
+            file=sys.stderr,
+        )
+        return 1
     if left:
         print(f"Warning: {IMPORT_PATH} is still on the phone; open Hermes once to import and delete it.")
     print(f"Imported {', '.join(p['slug'] for p in profiles)}. Switch profiles with the person icon in Hermes.")

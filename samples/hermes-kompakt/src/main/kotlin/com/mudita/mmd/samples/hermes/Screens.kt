@@ -468,7 +468,10 @@ private fun formatUpdated(raw: String, fmt: RowTimeFormat): String =
     raw.toDoubleOrNull()?.let { fmt.format(Date((it * 1000).toLong())) } ?: raw
 
 /** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
-private fun uniqueStamp(): String = java.text.SimpleDateFormat("MMM d HH:mm:ss", java.util.Locale.getDefault()).format(Date())
+private fun uniqueStamp(): String =
+    java.text.SimpleDateFormat("MMM d HH:mm:ss", java.util.Locale.getDefault()).format(Date()) +
+        // Two taps within the same second would otherwise get the same title.
+        " " + java.util.UUID.randomUUID().toString().take(4)
 
 /** One short line for a failed request; a network failure gets a hint instead of a stack of hosts. */
 fun connectionError(what: String, e: Throwable): String = when (e) {
