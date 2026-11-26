@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mudita.mmd.R
+import com.mudita.mmd.R as MmdR
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.menus.DropdownMenuItemMMD
@@ -81,7 +82,7 @@ fun GameScreen(
 
     Column(Modifier.fillMaxSize()) {
         KompaktTopBar(
-            label = "Twofold · Best ${state.best}",
+            label = "${stringResource(R.string.app_name)} · Best ${state.best}",
             title = "Score ${state.score}",
             actions = {
                 // Undo is the one action used mid-game, so it stays on the bar; the rest live in
@@ -199,7 +200,7 @@ private fun Overlay(
 @Composable
 private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        KompaktTopBar(label = "Twofold", title = "Tile style", onBack = onBack)
+        KompaktTopBar(label = stringResource(R.string.app_name), title = "Tile style", onBack = onBack)
         TileStyle.entries.forEachIndexed { i, style ->
             if (i > 0) DashedRowDivider()
             // Rows share the screen height evenly, so all styles fit without scrolling.
@@ -236,10 +237,10 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
 @Composable
 private fun RowScope.DirectionPad(onMove: (Direction) -> Unit) {
     listOf(
-        R.drawable.chevron_filled_left to Direction.WEST,
-        R.drawable.chevron_filled_up to Direction.NORTH,
-        R.drawable.chevron_filled_down to Direction.SOUTH,
-        R.drawable.chevron_filled_right to Direction.EAST,
+        MmdR.drawable.chevron_filled_left to Direction.WEST,
+        MmdR.drawable.chevron_filled_up to Direction.NORTH,
+        MmdR.drawable.chevron_filled_down to Direction.SOUTH,
+        MmdR.drawable.chevron_filled_right to Direction.EAST,
     ).forEach { (chevron, dir) ->
         val label = "Move ${dir.name.lowercase()}"
         Box(
