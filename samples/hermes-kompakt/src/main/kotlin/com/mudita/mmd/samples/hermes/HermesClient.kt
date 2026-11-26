@@ -82,12 +82,15 @@ class HermesClient(
      * (`API_SERVER_MODEL_NAME` overrides it), or `hermes-agent` for the default profile.
      * Cached raw; [ProfileNames.label] turns it into a display name. Null if it can't be fetched.
      */
+    /** This profile's display name on this client's server; see [ProfileNames.label]. */
+    fun profileLabel(): String = ProfileNames.label(settings.baseUrl, profile)
+
     suspend fun profileName(): String? = withContext(Dispatchers.IO) {
-        ProfileNames.names[profile.slug]?.let { return@withContext it }
+        ProfileNames.get(settings.baseUrl, profile.slug)?.let { return@withContext it }
         runCatching {
             val id = arrayIn(requestOk("GET", "/v1/models"), "data").objects().firstOrNull()?.str("id").orEmpty()
             id.ifBlank { null }
-        }.onSuccess { name -> name?.let { ProfileNames.names[profile.slug] = it } }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
+        }.onSuccess { name -> name?.let { ProfileNames.put(settings.baseUrl, profile.slug, it) } }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
     }
 
     suspend fun listSessions(limit: Int = 30): List<SessionSummary> = withContext(Dispatchers.IO) {
@@ -258,16 +261,27 @@ class HermesClient(
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 }
 
-/** Model ids fetched from each profile's `/v1/models`, keyed by slug, for this process. */
+/**
+ * Model ids fetched from each profile's `/v1/models`, for this process. Keyed by server URL
+ * and slug, so after the URL changes, names from the old server are never shown.
+ */
 object ProfileNames {
-    val names = mutableStateMapOf<String, String>()
+    private val names = mutableStateMapOf<String, String>()
 
-    /**
-     * What to show for [profile]: a name the user saved in Settings, else [displayNameFor]
-     * the model id Hermes reported (or the slug until it has answered).
-     */
-    fun label(profile: HermesProfile): String =
-        profile.displayName.trim().ifEmpty { displayNameFor(names[profile.slug] ?: profile.slug) }
+    private fun key(baseUrl: String, slug: String) = "${normalizeUrl(baseUrl)}|$slug"
+
+    fun get(baseUrl: String, slug: String): String? = names[key(baseUrl, slug)]
+
+    fun put(baseUrl: String, slug: String, id: String) {
+        names[key(baseUrl, slug)] = id
+    }
+
+    /** The derived name for [slug] on [baseUrl]: the reported model id, else the slug. */
+    fun derived(baseUrl: String, slug: String): String = displayNameFor(get(baseUrl, slug) ?: slug)
+
+    /** What to show for [profile]: a name the user saved in Settings, else [derived]. */
+    fun label(baseUrl: String, profile: HermesProfile): String =
+        profile.displayName.trim().ifEmpty { derived(baseUrl, profile.slug) }
 }
 
 /** Hermes sends times as epoch seconds, sometimes fractional (`1795466275.71`). */

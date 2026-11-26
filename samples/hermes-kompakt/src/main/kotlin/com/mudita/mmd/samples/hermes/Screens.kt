@@ -90,7 +90,7 @@ fun SessionsScreen(
     var settings by remember { mutableStateOf(SettingsStore.load(context)) }
     // A new client (and session list) whenever the active profile changes.
     val client = remember(settings.active) { HermesClient(settings) }
-    val profileName = ProfileNames.label(client.profile)
+    val profileName = client.profileLabel()
     LaunchedEffect(client) { client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var status by remember { mutableStateOf("Loading…") }
@@ -239,7 +239,7 @@ fun ChatScreen(
         val settings = SettingsStore.load(context)
         HermesClient(settings, settings.profile(profileSlug))
     }
-    val profileName = ProfileNames.label(client.profile)
+    val profileName = client.profileLabel()
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
@@ -417,8 +417,8 @@ fun SettingsScreen(onDone: () -> Unit) {
             Field("API key (API_SERVER_KEY)", s.profiles.first().apiKey) { key ->
                 s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
             }
-            ProfilesSection(s.profiles) { s = s.copy(profiles = it) }
-            DisplayNamesSection(s.profiles) { s = s.copy(profiles = it) }
+            ProfilesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
+            DisplayNamesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
             if (status.isNotBlank()) TextMMD(status)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
@@ -449,7 +449,7 @@ fun SettingsScreen(onDone: () -> Unit) {
 
 /** Extra profiles reached under `/p/<slug>/`; the default profile's key is the field above. */
 @Composable
-private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
+private fun ProfilesSection(baseUrl: String, profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
     var slug by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -462,7 +462,7 @@ private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<Herme
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextMMD(
-                "${ProfileNames.label(p)} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
+                "${ProfileNames.label(baseUrl, p)} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
                 modifier = Modifier.weight(1f),
             )
             OutlinedButtonMMD(onClick = { onChange(profiles - p) }) { TextMMD("Remove") }
@@ -491,10 +491,10 @@ private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<Herme
  * Hermes; leaving a field blank goes back to the derived name. Display only.
  */
 @Composable
-private fun DisplayNamesSection(profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
+private fun DisplayNamesSection(baseUrl: String, profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
     TextMMD("Display names", fontWeight = FontWeight.Bold)
     profiles.forEach { p ->
-        val derived = displayNameFor(ProfileNames.names[p.slug] ?: p.slug)
+        val derived = ProfileNames.derived(baseUrl, p.slug)
         Field("${p.slug.ifEmpty { "default" }} (blank: $derived)", p.displayName) { name ->
             onChange(profiles.map { if (it.slug == p.slug) it.copy(displayName = name) else it })
         }
@@ -620,7 +620,7 @@ private fun ProfileDropdown(
     LaunchedEffect(expanded) {
         if (expanded) {
             settings.profiles
-                .filter { ProfileNames.names[it.slug] == null }
+                .filter { ProfileNames.get(settings.baseUrl, it.slug) == null }
                 .forEach { p -> launch { HermesClient(settings, p).profileName() } }
         }
     }
@@ -634,7 +634,7 @@ private fun ProfileDropdown(
             DropdownMenuItemMMD(
                 text = {
                     TextMMD(
-                        ProfileNames.label(p),
+                        ProfileNames.label(settings.baseUrl, p),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         maxLines = 2,
