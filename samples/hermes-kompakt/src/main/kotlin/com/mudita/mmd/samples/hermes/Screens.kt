@@ -3,6 +3,12 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import com.mudita.mmd.components.menus.DropdownMenuItemMMD
+import com.mudita.mmd.components.menus.DropdownMenuMMD
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -99,11 +105,10 @@ fun SessionsScreen(
         refresh()
     }
 
-    fun switchProfile() {
-        val all = settings.profiles
-        val next = all[(all.indexOf(settings.active) + 1) % all.size]
-        SettingsStore.setActiveProfile(context, next.slug)
-        settings = settings.copy(activeProfile = next.slug)
+    fun switchProfile(to: HermesProfile) {
+        if (to.slug == settings.active.slug) return
+        SettingsStore.setActiveProfile(context, to.slug)
+        settings = settings.copy(activeProfile = to.slug)
     }
 
     fun newSession() {
@@ -122,8 +127,10 @@ fun SessionsScreen(
         // Like the Messages list: one bold title (the profile, as Messages shows "SMS"), plain
         // icons, and the main action as a filled "+".
         MessagesTopBar(label = "", title = profileName) {
-            // Cycles through profiles; with only the default profile there is nothing to switch.
-            if (settings.profiles.size > 1) BarIcon(Icons.Outlined.Person, "Switch profile") { switchProfile() }
+            // A menu of profiles; with only the default profile there is nothing to switch.
+            if (settings.profiles.size > 1) {
+                ProfileMenu(settings, onSelect = { switchProfile(it) })
+            }
             BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
             BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
             PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
@@ -468,4 +475,44 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
     is java.net.SocketTimeoutException, is java.net.ConnectException, is java.net.UnknownHostException ->
         "$what. Can't reach Hermes; check Tailscale."
     else -> "$what: ${e.message ?: e.javaClass.simpleName}"
+}
+
+/** The person icon opens a menu listing every profile, with a check on the active one. */
+@Composable
+private fun ProfileMenu(settings: HermesSettings, onSelect: (HermesProfile) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    // Names come from each profile's /v1/models; fetch the missing ones when the menu opens.
+    LaunchedEffect(open) {
+        if (open) {
+            settings.profiles
+                .filter { ProfileNames.names[it.slug] == null }
+                .forEach { p -> launch { HermesClient(settings, p).profileName() } }
+        }
+    }
+    Box {
+        BarIcon(Icons.Outlined.Person, "Switch profile") { open = true }
+        DropdownMenuMMD(expanded = open, onDismissRequest = { open = false }) {
+            settings.profiles.forEach { p ->
+                val active = p.slug == settings.active.slug
+                DropdownMenuItemMMD(
+                    text = {
+                        TextMMD(
+                            ProfileNames.label(p),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    trailingIcon = if (active) {
+                        { Icon(Icons.Outlined.Check, contentDescription = "Current profile", tint = Color.Black) }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        open = false
+                        onSelect(p)
+                    },
+                )
+            }
+        }
+    }
 }
