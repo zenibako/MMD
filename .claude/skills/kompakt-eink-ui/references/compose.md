@@ -29,13 +29,15 @@ and message bubbles.
 | List | `LazyColumnMMD` | its default ▲/▼ + pill scrollbar is the stock pattern; keep it. For one long piece of reading or a chat: `scrollStep = 0, isScrollbarVisible = false` |
 | Rule under the top bar | `HorizontalDividerMMD(thickness = 3.dp, color = Ink)` | inside `KompaktTopBar` |
 | Row divider | `DashedRowDivider()` | MMD only has solid dividers |
-| ⋮ menu, confirmations, choices | `KompaktSheet` below | stock apps never use dropdown menus |
+| ⋮ menu, long-press actions, confirmations, toggles, short choices | `KompaktSheet` with `SheetButton`, `SheetToggle`, `SheetChoice` below | stock apps never use dropdown menus |
+| Switching between a few peers from the title (profiles, accounts) | `KompaktTopBar(onTitleClick = …, titleMenu = { DropdownMenuMMD(…) })` | the one place a dropdown is accepted; see SKILL.md |
+| Per-row actions | `Modifier.combinedClickable(onLongClick = …)` opening an item sheet | needs `@OptIn(ExperimentalFoundationApi::class)` on older Compose |
 | Switch | `SwitchMMD` | 52 x 32 dp vs stock 48 x 30; acceptable, or wrap in `Modifier.scale(0.93f)` |
 | Radio / checkbox | `RadioButtonMMD`, `CheckboxMMD` | stock radio is larger (26 dp); fine to keep MMD's |
 | Top bar | `KompaktTopBar` | not `TopAppBarMMD`: stock title is 25 sp Black at 16 dp |
 | Create action | `CreateBarButton` in the top bar | not `FloatingActionButtonMMD` |
 | Tabs | `TabsMMD` / `TabMMD` | only where a stock app uses tabs (Phone) |
-| Snackbar, tooltip, dropdown, `ModalBottomSheet` | avoid | they animate or aren't stock patterns |
+| Snackbar, tooltip, `ModalBottomSheet`, dropdowns other than the title switcher | avoid | they animate or aren't stock patterns |
 
 Avoid `AnimatedVisibility`, `animate*AsState`, `Crossfade`, `AnimatedContent`,
 `animateScrollToItem`, infinite progress indicators, `Modifier.shadow`, non-zero
@@ -47,8 +49,10 @@ Avoid `AnimatedVisibility`, `animate*AsState`, `Crossfade`, `AnimatedContent`,
   whole screens, no navigation animation.
 - Sub-screens: `KompaktTopBar(onBack = …)` plus `BackHandler { … }`.
 - A setting with several choices opens a sub-screen of radio rows, not a dialog.
-- A sheet is part of the screen's state: `var sheet by remember { mutableStateOf(false) }`,
-  with `BackHandler(sheet) { sheet = false }`.
+- A sheet is part of the screen's state: `var sheet by remember { mutableStateOf(false) }`
+  (or the item it is for, `mutableStateOf<Item?>(null)`). `KompaktSheet` handles Back.
+- Sheets chain, never stack: an action that leads to another sheet (Menu > Filter, Item >
+  Delete confirm, Chat > Model) closes the first and opens the second.
 
 ## Reference: `KompaktUi.kt`
 
@@ -57,11 +61,14 @@ Copy into the app's UI package. Keep the numbers; they are the stock values.
 ```kotlin
 package your.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -100,6 +107,7 @@ import com.mudita.mmd.R
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
+import com.mudita.mmd.components.switcher.SwitchMMD
 import com.mudita.mmd.components.text.TextMMD
 
 val Ink = Color.Black
@@ -142,23 +150,50 @@ val KompaktTypography = Typography(
     labelSmall = style(15, 15, FontWeight.Medium),
 )
 
-/** Top bar: optional back arrow, a 25 sp Black title, plain icon [actions], then the 3 dp rule. */
+/**
+ * Top bar: optional back arrow, a 25 sp Black title, plain icon [actions], then the 3 dp rule.
+ * With [onTitleClick] the title is a switcher: the whole title is a 48 dp target with a ▾ after
+ * it, and [titleMenu] (a `DropdownMenuMMD`) is drawn in the title's box so it opens under it.
+ * [label] is an optional 18 sp line above the title; stock bars have none, so use it only for
+ * context the user needs on every visit (Hermes: the profile and a per-chat model).
+ */
 @Composable
-fun KompaktTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+fun KompaktTopBar(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    label: String? = null,
+    onTitleClick: (() -> Unit)? = null,
+    titleClickLabel: String? = null,
+    titleMenu: @Composable () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     Column(Modifier.fillMaxWidth().background(Paper)) {
-        Row(Modifier.fillMaxWidth().height(Kompakt.BarHeight), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = Kompakt.BarHeight), verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) {
                 Box(Modifier.padding(start = 6.dp).width(54.dp)) { BarIcon(BackIcon, "Back", onClick = onBack) }
             } else {
                 Spacer(Modifier.width(Kompakt.TextInset))
             }
-            TextMMD(
-                title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Box(Modifier.weight(1f)) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = Kompakt.Touch)
+                        .then(if (onTitleClick != null) Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick) else Modifier),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    if (!label.isNullOrBlank()) TextMMD(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextMMD(
+                            title,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (onTitleClick != null) Icon(DropDownIcon, null, tint = Ink, modifier = Modifier.padding(start = 4.dp).size(20.dp))
+                    }
+                }
+                titleMenu()
+            }
             Row(Modifier.padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
         }
         HorizontalDividerMMD(thickness = Kompakt.BarRule, color = Ink)
@@ -289,17 +324,30 @@ fun KompaktButton(text: String, filled: Boolean, modifier: Modifier = Modifier, 
 }
 
 /**
- * Stock bottom sheet for ⋮ menus and confirmations: full width, white, 3 dp black top border,
- * no radius, shadow, scrim or animation. Stacked outlined actions, then a filled Cancel.
- * Place it last inside a full-screen Box so it draws over the screen.
+ * Stock bottom sheet for ⋮ menus, item actions, confirmations, toggles and short choices:
+ * full width, white, 3 dp black top border, no radius, shadow, scrim or animation. A centred
+ * 25 sp Black title, the [content] (usually [SheetButton]s), then the closing button. Place it
+ * last inside a full-screen Box so it draws over the screen. Back and a tap above it close it.
+ *
+ * - Menu or item sheet: outlined [SheetButton]s, filled "Cancel".
+ * - Confirm sheet: the question as [title], the item named in a body line, the action as the
+ *   one filled button and `closeFilled = false`, so only one button is black.
+ * - Toggle sheet: [SheetToggle]s, `closeLabel = "Done"`; changes apply at once.
  */
 @Composable
-fun KompaktSheet(title: String, actions: List<Pair<String, () -> Unit>>, onCancel: () -> Unit, cancelLabel: String = "Cancel") {
+fun KompaktSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    closeLabel: String = "Cancel",
+    closeFilled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    BackHandler(onBack = onDismiss)
     Box(
         Modifier.fillMaxSize().clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
-            onClick = onCancel,
+            onClick = onDismiss,
         ),
         contentAlignment = Alignment.BottomCenter,
     ) {
@@ -310,11 +358,86 @@ fun KompaktSheet(title: String, actions: List<Pair<String, () -> Unit>>, onCance
                 .padding(start = 12.dp, end = 12.dp, top = 3.dp + 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TextMMD(title, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-            actions.forEach { (label, action) -> KompaktButton(label, filled = false, modifier = Modifier.fillMaxWidth(), onClick = action) }
-            KompaktButton(cancelLabel, filled = true, modifier = Modifier.fillMaxWidth(), onClick = onCancel)
+            TextMMD(title, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            content()
+            SheetButton(closeLabel, filled = closeFilled, onClick = onDismiss)
         }
     }
+}
+
+/** A sheet action: full width, 48 dp, 12 dp corners, 2 dp outline or filled black, centred 21 sp Black label. */
+@Composable
+fun SheetButton(label: String, filled: Boolean = false, onClick: () -> Unit) =
+    KompaktButton(label, filled = filled, modifier = Modifier.fillMaxWidth(), onClick = onClick)
+
+/** A sheet row with a 21 sp label and a switch at the right; the whole 48 dp row toggles it. */
+@Composable
+fun SheetToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = Kompakt.Touch)
+            .clickable(onClickLabel = label) { onChange(!checked) }
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextMMD(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        SwitchMMD(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/**
+ * One option in a choice sheet: a full-width outlined 48 dp button with the label at the start.
+ * The current option is 3 dp, Black and checked. Picking applies and closes the sheet.
+ */
+@Composable
+fun SheetChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(Kompakt.ButtonCorner)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = Kompakt.Touch)
+            .border(if (selected) 3.dp else 2.dp, Ink, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextMMD(
+            label,
+            Modifier.weight(1f),
+            style = if (selected) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyLarge,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (selected) Icon(CheckIcon, "Current", tint = Ink, modifier = Modifier.padding(start = 4.dp).size(24.dp))
+    }
+}
+
+/** Choices in a sheet, capped so the sheet keeps the screen's top visible. More than about six: use a radio sub-screen. */
+@Composable
+fun SheetChoices(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+/** A one-line status under the content (loading, an error) with an optional Retry icon at the right. */
+@Composable
+fun StatusLine(text: String, onRetry: (() -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().padding(start = Kompakt.TextInset, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextMMD(text, Modifier.weight(1f).padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (onRetry != null) BarIcon(RetryIcon, "Retry", onClick = onRetry)
+    }
+}
+
+/** Agent activity between messages, e.g. "Used web_search, read_file": one small line, no bubble. */
+@Composable
+fun ActivityLine(text: String) {
+    TextMMD(
+        text,
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** Empty state: illustration, 25 sp Black headline, 21 sp Medium body, one outlined button. */
@@ -408,6 +531,24 @@ private fun lineIcon(name: String, block: androidx.compose.ui.graphics.vector.Pa
 val PlusIcon = lineIcon("Plus") { moveTo(3f, 12f); lineTo(21f, 12f); moveTo(12f, 3f); lineTo(12f, 21f) }
 val BackIcon = lineIcon("Back") { moveTo(20f, 12f); lineTo(4f, 12f); moveTo(11f, 5f); lineTo(4f, 12f); lineTo(11f, 19f) }
 val ChevronRightIcon = lineIcon("Chevron") { moveTo(9f, 5f); lineTo(16f, 12f); lineTo(9f, 19f) }
+val DropDownIcon = lineIcon("DropDown") { moveTo(5f, 9f); lineTo(12f, 16f); lineTo(19f, 9f) }
+val CheckIcon = lineIcon("Check") { moveTo(4f, 12f); lineTo(10f, 18f); lineTo(20f, 6f) }
+val RetryIcon = lineIcon("Retry") {
+    moveTo(19f, 12f); arcTo(7f, 7f, 0f, true, true, 16.95f, 7.05f)
+    moveTo(19f, 3f); lineTo(19f, 8f); lineTo(14f, 8f)
+}
+val PinIcon = lineIcon("Pin") {
+    moveTo(9f, 3f); lineTo(15f, 3f); moveTo(10f, 3f); lineTo(10f, 9f); lineTo(7f, 13f)
+    lineTo(17f, 13f); lineTo(14f, 9f); lineTo(14f, 3f); moveTo(12f, 13f); lineTo(12f, 21f)
+}
+val EditIcon = lineIcon("Edit") {
+    moveTo(4f, 20f); lineTo(4f, 16f); lineTo(16f, 4f); lineTo(20f, 8f); lineTo(8f, 20f); close()
+    moveTo(13f, 7f); lineTo(17f, 11f)
+}
+val LockIcon = lineIcon("Lock") {
+    moveTo(6f, 11f); lineTo(18f, 11f); lineTo(18f, 20f); lineTo(6f, 20f); close()
+    moveTo(8f, 11f); lineTo(8f, 8f); arcTo(4f, 4f, 0f, false, true, 16f, 8f); lineTo(16f, 11f)
+}
 val MoreIcon: ImageVector = ImageVector.Builder("More", 24.dp, 24.dp, 24f, 24f).addPath(
     addPathNodes("M12,8a2,2 0 1,0 0,-4a2,2 0 1,0 0,4zM12,14a2,2 0 1,0 0,-4a2,2 0 1,0 0,4zM12,20a2,2 0 1,0 0,-4a2,2 0 1,0 0,4z"),
     fill = SolidColor(Ink),
@@ -431,7 +572,7 @@ directions use MMD's `R.drawable.chevron_filled_{left,up,down,right}`.
 Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         KompaktTopBar("Messages") {
-            BarIcon(MoreIcon, "More options") { sheet = true }
+            BarIcon(MoreIcon, "More options") { menu = true }
             CreateBarButton("New message") { onNew() }
         }
         if (status.isNotBlank()) TextMMD(status, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
@@ -440,18 +581,74 @@ Box(Modifier.fillMaxSize()) {
             items(rows, key = { it.id }) { r -> ConversationRow(r.name, r.time, r.preview) { onOpen(r) } }
         }
     }
-    if (sheet) {
-        BackHandler { sheet = false }
-        KompaktSheet("Options", listOf("Refresh" to { sheet = false; refresh() }, "Settings" to { sheet = false; onSettings() }), onCancel = { sheet = false })
+    if (menu) {
+        KompaktSheet("Menu", onDismiss = { menu = false }) {
+            SheetButton("Refresh") { menu = false; refresh() }
+            SheetButton(if (hidden.isEmpty()) "Filter" else "Filter (some hidden)") { menu = false; filter = true }
+            SheetButton("Settings") { menu = false; onSettings() }
+        }
+    }
+    if (filter) {
+        KompaktSheet("Show", onDismiss = { filter = false }, closeLabel = "Done") {
+            Group.entries.forEach { g -> SheetToggle(g.label, checked = g !in hidden) { show -> hidden = if (show) hidden - g else hidden + g } }
+        }
+    }
+    itemSheet?.let { r ->
+        KompaktSheet(r.name, onDismiss = { itemSheet = null }) {
+            SheetButton(if (r.pinned) "Unpin" else "Pin to top") { itemSheet = null; setPinned(r, !r.pinned) }
+            SheetButton("Delete") { itemSheet = null; confirmDelete = r }
+        }
+    }
+    confirmDelete?.let { r ->
+        KompaktSheet("Delete this conversation?", onDismiss = { confirmDelete = null }, closeFilled = false) {
+            TextMMD(r.name, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center, maxLines = 2)
+            SheetButton("Delete", filled = true) { confirmDelete = null; delete(r) }
+        }
     }
 }
 ```
 
+Rows open on tap and offer their actions on long-press:
+`Modifier.combinedClickable(onClickLabel = "Open", onLongClickLabel = "Actions", onLongClick = { itemSheet = r }, onClick = { onOpen(r) })`.
+Mark a pinned row with a 20 dp `PinIcon` before its name and sort pinned rows first; mark a
+read-only row with an 18 dp `LockIcon` before its preview. Filters persist in settings and
+the ⋮ entry says when some rows are hidden.
+
+**Title switcher** (a few peer accounts or profiles, Hermes): `KompaktTopBar(profileName,
+onTitleClick = if (profiles.size > 1) ({ open = true }) else null, titleClickLabel = "Switch profile",
+titleMenu = { DropdownMenuMMD(expanded = open, onDismissRequest = { open = false }) { … } })`.
+Items are `DropdownMenuItemMMD` with 21 sp labels that may wrap to two lines, the current one
+Black with a `CheckIcon`. Only with two or more peers; otherwise the title is plain.
+
 **Conversation screen**: `KompaktTopBar(contactName, onBack = …)`, a
 `LazyColumnMMD(Modifier.weight(1f), scrollStep = 0, isScrollbarVisible = false)` of day
-markers and `MessageBubble`s, a one-line status, then
-`KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconButton(SendOutlineIcon, "Send") { send() } }`.
-Jump to the newest with `listState.scrollToItem(last)`.
+markers and `MessageBubble`s, a `StatusLine` while working or after a failure (with `onRetry` when history failed to load),
+then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconButton(SendOutlineIcon, "Send") { send() } }`.
+
+- Open on the end of the newest message, and stay there only while the reader is there, so
+  a reply doesn't undo scrolling up to read:
+
+  ```kotlin
+  LaunchedEffect(listState) {
+      snapshotFlow { listState.isScrollInProgress }.collect { if (!it) followBottom = !listState.canScrollForward }
+  }
+  LaunchedEffect(items.size) {
+      // The offset is clamped, so this shows the end of a long last item, not just its top.
+      if (items.isNotEmpty() && followBottom) listState.scrollToItem(items.size - 1, scrollOffset = Int.MAX_VALUE)
+  }
+  ```
+  Sending sets `followBottom = true`.
+- Agent or system activity: an `ActivityLine("Used web_search, read_file")` between bubbles.
+  Full tool calls and system entries stay hidden behind a ⋮ > `SheetToggle("Show tool and
+  system messages")`; when shown, each is an 18 sp Black label over up to four 18 sp lines,
+  with a dashed divider.
+- A conversation the user can't write to: replace the compose bar's content, don't disable
+  it. `KompaktBottomBar { Icon(LockIcon, "Read-only"); /* source icon */; Spacer(Modifier.weight(1f)); OutlinedIconButton(EditIcon, "Continue here") { fork() } }`.
+- A per-conversation choice (Hermes: the model) lives in the chat's ⋮ sheet as
+  `SheetButton("Model: $current")`, which opens a choice sheet of `SheetChoice`s inside
+  `SheetChoices`, the first one "Default". While the options load or fail, the sheet shows
+  one line of text in their place. When a choice overrides a default, say so in the bar's
+  `label`.
 
 **Settings screen**: `KompaktTopBar("Settings", onBack = …)`, then a scrolling column of
 `SectionHeader` and `KompaktRow`s: `trailing = { SwitchMMD(checked, onCheckedChange = null) }`
@@ -466,7 +663,7 @@ with `Modifier.weight(1f)`, radio leading, dashed dividers between.
 ## Review
 
 Run the checklist in `SKILL.md`, then grep the diff for `animate`, `Animated`,
-`Crossfade`, `shadow`, `Elevation = [1-9]`, `ripple`, `DropdownMenu`, `AlertDialog`,
-`ModalBottomSheet`, `FloatingActionButton`, `Color(0x` other than black or white, and
+`Crossfade`, `shadow`, `Elevation = [1-9]`, `ripple`, `DropdownMenu` (outside a title switcher), `AlertDialog`,
+`ModalBottomSheet`, `FloatingActionButton`, `Icons.Filled`/`Icons.Outlined` (prefer the line icons), `Color(0x` other than black or white, and
 `fontWeight = FontWeight.Bold` (the stock weight is Black). Look at the result on a real
 Kompakt; emulators hide ghosting.

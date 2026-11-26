@@ -39,7 +39,7 @@ the stock values the `kompakt-eink-ui` skill now uses.
 |---|---|---|---|---|---|---|
 | Top bar | 64 dp + 3 dp black rule | 64 dp, 3 dp divider | 64 dp min + 3 dp | same | 64 dp + 3 dp | **Match** |
 | Bar title | Lato **Black 25 sp**, at 16 dp | Medium 24 sp | Bold 24 sp, at 16 dp | Bold 24 sp | Bold 24 sp | Change to Black 25 sp |
-| Label above title | not used in stock bars | none | small label over title | "Twofold · Best" label | none | Drop, or move into the title or first row |
+| Label above title | not used in stock bars | none | chat only (profile, and the model when overridden); list title-only | "Twofold · Best" label | none | Drop, or move into the title or first row |
 | Bar icons | about 28 dp glyph, 48 dp target | 24 dp | 30 dp / 48 dp | 30 dp / 48 dp | toolbar default | Change to about 28 dp |
 | Create "+" | black rounded rectangle 42 x 36 dp, 8 dp corners, 22 dp line "+" | none (FAB exists) | 48 dp square, 10 dp corners | n/a | 56 dp FAB, 12 dp corners | Change to 42 x 36, 8 dp |
 | Row text inset | 16 dp (about 60 dp after an icon) | none | 20 dp | 12 dp | 20 dp | Change to 16 dp |
@@ -50,12 +50,12 @@ the stock values the `kompakt-eink-ui` skill now uses.
 | Sent bubble | **2 dp**, 12 dp, square bottom-right | none | 2.5 dp, all round | n/a | n/a (all received) | Change to 2 dp with a tail |
 | Selected bubble | 3.5 dp | none | n/a | n/a | 3 dp | Change to 3.5 dp |
 | Message text | 18 sp Medium, padding 10/8 dp | | 20 sp, padding 12/8 | n/a | 20 sp | Change to 18 sp |
-| Menus | **bottom sheet**: 3 dp top border, centred 25 sp Black title, stacked outlined 48 dp buttons, black Cancel; no popups found | dropdown, 20 dp corners, 2 dp outline | none | `DropdownMenuMMD` | outlined popup, 10 dp corners | Change to bottom sheet |
-| Buttons | 48 dp (56 large, 36 small), 12 dp corners (about 10 in Compose apps, 8 small), 2 dp outline | min 32 dp, 8 dp, 2 dp | MMD defaults | MMD defaults | Material + 2 dp outline | Change to 48 dp, 12 dp |
+| Menus | **bottom sheet**: 3 dp top border, centred 25 sp Black title, stacked outlined 48 dp buttons, black Cancel; no popups found | dropdown, 20 dp corners, 2 dp outline | stock-valued sheets for ⋮, long-press, confirm, toggles, model choice; dropdown only under the title for profiles | `DropdownMenuMMD` | outlined popup, 10 dp corners | Change to bottom sheet |
+| Buttons | 48 dp (56 large, 36 small), 12 dp corners (about 10 in Compose apps, 8 small), 2 dp outline | min 32 dp, 8 dp, 2 dp | 48 dp, 12 dp in sheets; MMD defaults in Settings | MMD defaults | Material + 2 dp outline | Change to 48 dp, 12 dp |
 | Switch | 48 x 30 dp pill | 52 x 32 dp | `SwitchMMD` (unused) | n/a | Material switch | Close enough in Compose; use the stock pill in XML |
 | Radio | 26 dp | 20 dp | n/a | `RadioButtonMMD` | Material | Minor; keep MMD's |
 | Checkbox | 20 dp | 23 dp | n/a | n/a | n/a | Minor |
-| Selection | 20 dp checkbox per row, delete in the bar | none | n/a | n/a | 3 dp row outline, white action bar | Acceptable; checkbox is closer to stock |
+| Selection | 20 dp checkbox per row, delete in the bar | none | long-press item sheet (pin, delete) | n/a | 3 dp row outline, white action bar | Acceptable; checkbox is closer to stock |
 | Settings | 64 dp rows, 21 sp Black headers, switch right, ">" for sub-pages, dashed dividers, radio sub-screens | none | form fields only | radio screen | 16 sp Bold headers, dashed inset dividers | Change header size and row height |
 | Long lists | ▲/▼ buttons + 8 dp pill scrollbar | the same, in `LazyColumnMMD` | `LazyColumnMMD` default for sessions | n/a | RecyclerView, no buttons | **Match** in Compose; missing in ntfy |
 | Long reading | follow-the-finger in conversations | `scrollStep = 0` | `scrollStep = 0`, no scrollbar | n/a | RecyclerView | Match |
@@ -68,15 +68,20 @@ the stock values the `kompakt-eink-ui` skill now uses.
 
 **Hermes** (`samples/hermes-kompakt`)
 
-1. `MessagesTopBar`: title to 25 sp Black; drop the label row (put the profile in the title
-   or a first line); icons to 28 dp.
+1. `MessagesTopBar`: title to 25 sp Black; icons to 28 dp. Done since the audit: the list
+   bar is title-only, with the profile name as a ▾ switcher, and Refresh and Settings moved
+   into a ⋮ sheet. The chat bar keeps its label (profile and model), which the skill now
+   allows as a documented deviation.
 2. `PrimaryBarIcon`: 42 x 36 dp black rectangle with 8 dp corners and a line "+".
 3. `MessageBubble`: 12 dp corners; sent = 2 dp with a square bottom-right; 18 sp text with
    10/8 dp padding; 2 dp / 18 dp spacing for same / different author.
 4. `DashedRowDivider`: 2/2 dp dash, 16 dp inset, to the right edge; session rows 72 dp,
    name 21 sp Black, preview and time 18 sp.
-5. Settings: 64 dp rows, `KompaktButton`s at 48 dp, a bottom sheet for any future menu.
+5. Settings: 64 dp rows, `KompaktButton`s at 48 dp. Done since the audit: every menu is a
+   stock-valued sheet (⋮, long-press, delete confirm, filter toggles, model choice).
 6. Theme with `KompaktTypography`.
+7. Sheet labels use `FontWeight.Black` via `fontSize = 21.sp` overrides; switching to
+   `KompaktTypography` would remove those overrides.
 
 **Twofold** (`samples/twofold`)
 
@@ -95,6 +100,17 @@ the stock values the `kompakt-eink-ui` skill now uses.
 5. Overflow and per-message menus: a bottom sheet with stacked outlined buttons and a black
    Cancel, instead of the outlined popup.
 6. Settings: 64 dp rows, 21 sp Black category titles, the stock pill switch.
+
+## Patterns adopted from Hermes
+
+The stock apps have no equivalent for these, so the skill takes them from Hermes (as of
+`6cab0c7`, November 2026): the title as a profile switcher with an anchored dropdown;
+long-press item sheets and a confirm sheet with the action filled and Cancel outlined;
+toggle sheets closed with "Done" and choice sheets with a checked, 3 dp current option;
+"Filter (some hidden)"; pinned and read-only row markers; opening chats at the newest
+message without jumping while the reader scrolls; one-line agent activity between
+messages; a read-only compose bar with a "Continue here" pencil; and one-line errors with
+a Retry icon.
 
 ## Open questions
 

@@ -8,7 +8,9 @@ description: Design and build Mudita Kompakt E Ink app UI that looks native next
 These rules make a third-party app look and behave like the Kompakt's own apps. The
 numbers come from the stock apps themselves (MuditaOS K build 20261116): decoded resources
 of Messages, Contacts, Phone, Calendar and Alarm, and on-device measurements of Settings,
-Notes, Calendar, Alarm, Meditation, Weather and the launcher. See
+Notes, Calendar, Alarm, Meditation, Weather and the launcher. Where the stock apps have no
+answer (switching profiles, per-item actions, agent activity, read-only items), the patterns
+come from the Hermes app, built and used on the phone. See
 `docs/kompakt-ui-audit.md` in the MMD repo (zenibako/MMD) for the evidence and for how the Hermes,
 Twofold and ntfy Kompakt apps compared.
 
@@ -126,11 +128,19 @@ next to the stock apps.
 
 - White, 64 dp tall, then the 3 dp black rule. No elevation, no colour change on scroll.
 - Title: 25 sp Black, one line, ellipsis, starting at 16 dp, or at 60 dp after a back
-  arrow. Stock bars are title-only; a small label above the title is not a stock pattern,
-  so put context in the title or the first row instead.
+  arrow. Stock bars are title-only. A small 18 sp Medium line above the title is not a stock
+  pattern; use it only for context the user needs on every visit and can't get from the
+  title (Hermes' chat: the profile, plus the model when the chat overrides the default).
+- **Title as a switcher** (Hermes' profiles): when a screen shows one of a few peers
+  (accounts, profiles), the title is the switcher. The whole title is a 48 dp target with a
+  small ▾ after the name, and it opens an outlined dropdown anchored under the title:
+  names in 21 sp, wrapping to two lines, the current one Black with a check. This is the
+  one accepted dropdown: picking a peer is quick, frequent and keeps the list in view. Only
+  with two or more peers; with one, the title is plain. Don't add a separate switch icon.
 - Back arrow on sub-screens only (left, 48 dp target).
 - Actions: plain black icons, about 28 dp in 48 dp targets, at most two or three.
-  Further actions go in a bottom sheet behind ⋮.
+  Further actions (Refresh, Filter, Settings) go in a bottom sheet behind ⋮, which leaves
+  the width to the title.
 - The screen's one create action ("+", new message) is a **filled black rounded rectangle,
   42 x 36 dp with 8 dp corners**, a 22 dp white "+" drawn with 2 dp strokes, 16 dp from the
   right edge. Not a round FAB. (Calendar's alternative: a 64 dp outlined square "+", 2 dp
@@ -150,7 +160,15 @@ next to the stock apps.
   56 dp short of the edge). ▲ is faint at the top, ▼ at the bottom. MMD's
   `LazyColumnMMD` draws exactly this by default.
 - Selection mode (Messages): a 20 dp checkbox appears at the start of every row and the
-  top bar shows the delete action. No highlight fill.
+  top bar shows the delete action. No highlight fill. Use it for acting on many rows.
+- Per-row actions (pin, delete, rename one item): tap opens the row, **long-press opens an
+  item sheet** titled with the row's name. Destructive actions then ask in a confirm sheet.
+- Pinned rows sort first and show a 20 dp line pin before the name. A row the user can't
+  change shows a small (18 dp) lock, plus the icon of what owns it, before its preview.
+- Filtering a list: ⋮ > Filter opens a "Show" sheet of switches, one per kind of row, all
+  on by default and saved. The ⋮ entry reads "Filter (some hidden)" while any are off, so a
+  short list is never a mystery.
+- Untitled items get a placeholder title ("New chat"), never a blank row.
 - Empty state: a centred line illustration, a 25 sp Black headline, a 21 sp Medium body,
   and one outlined 48 dp button ("Create new note").
 
@@ -167,19 +185,51 @@ next to the stock apps.
 - Day markers between days, centred.
 - Compose bar under a rule: a plain field and an outlined send button.
 - Replies from a network or agent appear once, complete. Show a one-line status meanwhile.
+- Open a conversation at the **end of the newest message**. New messages scroll the view
+  only while the reader is at the bottom, so scrolling up to read is never undone; sending
+  always shows your message.
+- Agent or system activity between messages: one 18 sp line, no bubble, inset like the
+  bubbles ("Used web_search, read_file"; names only, merged). The full tool calls and
+  system entries stay behind a switch in the conversation's ⋮ sheet, off by default; when
+  shown, each is an 18 sp Black label over at most four lines, with a dashed divider.
+- A conversation the user can't write to: replace the compose bar's content with a lock,
+  the icon of what owns it, and at most one outlined action at the right (Hermes: a pencil,
+  "Continue here", which copies it into a writable one). Never a greyed-out field.
+- A failed load: the status line says what failed, with a Retry icon at its right.
+- A per-conversation setting (Hermes: the model) goes in the conversation's ⋮ sheet as
+  "Model: <current>", opening a choice sheet.
 
 ### Bottom sheets (all ⋮ menus and choices)
 
 The stock apps have **no popup or dropdown menus** and no centred alert dialogs on the
-paths we could reach. ⋮ and confirmations open a bottom sheet:
+paths we could reach. ⋮, long-press actions and confirmations open a bottom sheet (the
+title switcher above is the only dropdown):
 
 - Full width, white, a **3 dp black top border**, no radius, no shadow, no scrim (the
-  screen above stays fully visible). Appears without animation.
+  screen above stays fully visible). Appears without animation. Back and a tap above the
+  sheet close it.
 - A centred 25 sp Black title.
 - Full-width stacked buttons, 12 dp side margins, 16 dp gaps: each action is an
-  **outlined** 48 dp button (56 dp in Messages), and the last one is a **filled black
-  Cancel**.
+  **outlined** 48 dp button (56 dp in Messages) with a centred 21 sp Black label, and the
+  last one is a **filled black Cancel**.
 - A destructive action is named in its button ("Delete conversation"), not coloured.
+
+Kinds of sheet, all with that frame:
+
+| Sheet | Title | Content | Closing button |
+|---|---|---|---|
+| Menu (⋮) | "Menu", or the screen's subject ("Chat") | outlined actions | filled Cancel |
+| Item (long-press) | the item's name | outlined actions ("Pin to top", "Delete") | filled Cancel |
+| Confirm | the question ("Delete this session?") | the item's name as a centred 21 sp line, then the action as the **filled** button | **outlined** Cancel, so only one button is black |
+| Toggles | what they control ("Show") | 48 dp rows: 21 sp label, switch at the right, whole row toggles; changes apply at once | filled "Done" |
+| Choice | the setting ("Model") | full-width outlined 48 dp options, label at the start; the current one 3 dp, Black, with a check; picking applies and closes | filled Cancel |
+
+- A choice sheet suits up to about six options. Longer lists scroll inside the sheet,
+  capped at about 380 dp so the screen's top stays visible; past a dozen, use a radio
+  sub-screen instead. While options load or after they fail, show one line of text in
+  their place.
+- Sheets chain, never stack: an action that needs another sheet closes the first.
+- A menu entry that opens a setting shows its current value ("Model: Profile default").
 
 ### Settings
 
@@ -223,7 +273,11 @@ paths we could reach. ⋮ and confirmations open a bottom sheet:
 ### Copy
 
 - Short, plain, sentence case. Name the place ("Settings", "Display").
-- Errors as one line of text in the content area, not a coloured snackbar.
+- Errors as one line of text in the content area, not a coloured snackbar. Say what
+  failed and, for a network failure, the likely fix in a few words ("Couldn't load. Can't
+  reach Hermes; check Tailscale."), never a stack trace or host list.
+- Show friendly names for ids ("system-admin" as "System Admin"), and let the user rename
+  them in Settings. Display only: keep ids in storage and requests.
 
 ## Review checklist
 
@@ -238,8 +292,13 @@ Every "no" is a defect.
 - [ ] Create action is the black 42 x 36 rounded rectangle, not a FAB?
 - [ ] Text at 16 dp; dashed 1 dp (2/2) dividers from the text start to the edge?
 - [ ] Row heights 64 / 72 / 81 dp as the row type needs?
-- [ ] ⋮ and confirmations are bottom sheets with stacked outlined buttons and a black
-      Cancel, not popups or centred dialogs?
+- [ ] ⋮, long-press actions and confirmations are bottom sheets with stacked outlined
+      buttons and one black button, not popups or centred dialogs? The only dropdown is a
+      title switcher.
+- [ ] Destructive actions confirm in a sheet that names the item?
+- [ ] Conversations open at the newest message and don't jump while the reader scrolls up?
+- [ ] Read-only items say so with a lock and offer a way forward, not a disabled field?
+- [ ] Failures are one plain line, with Retry where retrying helps?
 - [ ] Buttons 48 dp tall with 12 dp corners; switch 48 x 30; radio 26; checkbox 20?
 - [ ] Long lists use ▲/▼ with the pill scrollbar?
 - [ ] Secondary tasks open as sub-screens with a back arrow, and system back works?
