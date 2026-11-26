@@ -312,3 +312,27 @@ private val SendOutline: ImageVector by lazy {
         }
     }.build()
 }
+
+/** Pinned-session marker: a thin-line push pin, drawn like [SendOutline]. */
+val PinOutline: ImageVector by lazy {
+    ImageVector.Builder("PinOutline", 24.dp, 24.dp, 24f, 24f).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.6f,
+            strokeLineJoin = StrokeJoin.Round,
+            strokeLineCap = StrokeCap.Round,
+        ) {
+            // Head, body flaring to a flat base, then the needle.
+            moveTo(9f, 3f)
+            lineTo(15f, 3f)
+            moveTo(10f, 3f)
+            lineTo(10f, 9f)
+            lineTo(7f, 13f)
+            lineTo(17f, 13f)
+            lineTo(14f, 9f)
+            lineTo(14f, 3f)
+            moveTo(12f, 13f)
+            lineTo(12f, 21f)
+        }
+    }.build()
+}

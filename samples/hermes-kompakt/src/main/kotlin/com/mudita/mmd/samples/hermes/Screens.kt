@@ -1,8 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.widthIn
@@ -127,10 +129,9 @@ fun SessionsScreen(
     fun newSession() {
         val c = client
         scope.launch {
-            // Hermes requires unique session titles, so stamp each one with the time.
-            val title = "Kompakt ${uniqueStamp()}"
-            runCatching { c.createSession(title) }
-                .onSuccess { if (c === currentClient) onOpen(it, title, c.profile.slug, "api_server") }
+            // No title: Hermes names the session from its first message (auto-titling).
+            runCatching { c.createSession() }
+                .onSuccess { if (c === currentClient) onOpen(it, "", c.profile.slug, "api_server") }
                 // An error from a profile we've since left belongs to that profile, not this list.
                 .onFailure { if (c === currentClient) status = connectionError("Couldn't start a session", it) }
         }
@@ -138,6 +139,17 @@ fun SessionsScreen(
 
     var profileMenu by remember { mutableStateOf(false) }
     var moreSheet by remember { mutableStateOf(false) }
+    // The session whose long-press sheet (pin / unpin) is open.
+    var sessionSheet by remember { mutableStateOf<SessionSummary?>(null) }
+
+    fun setPinned(s: SessionSummary, pinned: Boolean) {
+        val c = client
+        scope.launch {
+            runCatching { c.setPinned(s.id, pinned) }
+                .onSuccess { if (c === currentClient) refresh() }
+                .onFailure { if (c === currentClient) status = connectionError("Couldn't update the pin", it) }
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -173,14 +185,22 @@ fun SessionsScreen(
                     // preview (Hermes's preview, else the source), flagged when read-only.
                     Column(
                         Modifier.fillMaxWidth()
-                            .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
+                            .combinedClickable(
+                                onClickLabel = "Open",
+                                onLongClickLabel = if (s.pinned) "Unpin" else "Pin",
+                                onLongClick = { sessionSheet = s },
+                                onClick = { onOpen(s.id, s.title, client.profile.slug, s.source) },
+                            )
                             // No end padding: the scrollbar already sits to the right of the row.
                             .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (s.pinned) {
+                                Icon(PinOutline, contentDescription = "Pinned", tint = Color.Black, modifier = Modifier.padding(end = 6.dp).size(20.dp))
+                            }
                             TextMMD(
-                                s.title,
+                                sessionTitleOrPlaceholder(s.title),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
@@ -205,6 +225,14 @@ fun SessionsScreen(
                         }
                     }
                     DashedRowDivider()
+                }
+            }
+        }
+        sessionSheet?.let { s ->
+            KompaktSheet(sessionTitleOrPlaceholder(s.title), onDismiss = { sessionSheet = null }) {
+                SheetButton(if (s.pinned) "Unpin" else "Pin to top") {
+                    sessionSheet = null
+                    setPinned(s, !s.pinned)
                 }
             }
         }
@@ -235,6 +263,8 @@ fun ChatScreen(
     val readOnly = isReadOnlySource(source)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Hermes names a new session from its first message; shown once it has.
+    var shownTitle by remember { mutableStateOf(title) }
     val client = remember {
         val settings = SettingsStore.load(context)
         HermesClient(settings, settings.profile(profileSlug))
@@ -283,6 +313,17 @@ fun ChatScreen(
             }
     }
 
+    // Hermes writes a quick title at the turn's start and may upgrade it with a model shortly
+    // after; read it once now and once a little later.
+    fun refreshTitle() {
+        scope.launch {
+            for (wait in listOf(0L, 8_000L)) {
+                delay(wait)
+                client.sessionTitle(sessionId)?.let { shownTitle = it }
+            }
+        }
+    }
+
     fun send() {
         val text = draft.trim()
         if (text.isEmpty() || !historyLoaded || sending) return
@@ -304,6 +345,7 @@ fun ChatScreen(
                             is ChatEvent.Done -> {
                                 e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
                                 working = null
+                                if (shownTitle.isBlank()) refreshTitle()
                             }
                             is ChatEvent.Failed -> working = "Run failed: ${e.reason}"
                             is ChatEvent.Delta -> Unit
@@ -324,7 +366,7 @@ fun ChatScreen(
 
     Column(Modifier.fillMaxSize()) {
         // Like a Messages thread: who you're talking to (the profile) above the conversation.
-        MessagesTopBar(label = profileName, title = title, onBack = onBack)
+        MessagesTopBar(label = profileName, title = sessionTitleOrPlaceholder(shownTitle), onBack = onBack)
         // Newest at the bottom, like a Messages thread; jump there when messages change.
         val listState = rememberLazyListState()
         LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.scrollToItem(messages.size - 1) }
@@ -370,7 +412,7 @@ fun ChatScreen(
                     forking = true
                     forkStatus = "Copying…"
                     scope.launch {
-                        val newTitle = "$title (Kompakt ${uniqueStamp()})"
+                        val newTitle = "${sessionTitleOrPlaceholder(shownTitle)} (Kompakt ${uniqueStamp()})"
                         runCatching { client.forkSession(sessionId, newTitle) }
                             .onSuccess { onOpenSession(it, newTitle) }
                             .onFailure {

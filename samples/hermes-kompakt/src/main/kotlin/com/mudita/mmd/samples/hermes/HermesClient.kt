@@ -27,6 +27,8 @@ data class SessionSummary(
     val source: String,
     /** A message preview, if Hermes includes one in the list (field names vary). */
     val preview: String = "",
+    /** Pinned on the server (the same flag the Hermes dashboard's sidebar uses). */
+    val pinned: Boolean = false,
 ) {
     val isReadOnly: Boolean get() = isReadOnlySource(source)
 }
@@ -93,18 +95,43 @@ class HermesClient(
         }.onSuccess { name -> name?.let { ProfileNames.put(settings.baseUrl, profile.slug, it) } }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
     }
 
+    /**
+     * Recent sessions, pinned ones first. Hermes keeps the canonical "Bot Chat" session hidden
+     * from ordinary listings, so it is looked up by title and shown right after the pins.
+     */
     suspend fun listSessions(limit: Int = 30): List<SessionSummary> = withContext(Dispatchers.IO) {
-        val body = requestOk("GET", "/api/sessions?limit=$limit")
+        val recent = parseSessions(requestOk("GET", "/api/sessions?limit=$limit"))
+        val botChat = runCatching {
+            parseSessions(requestOk("GET", "/api/sessions?limit=1&include_hidden=true&title=${enc(BOT_CHAT_TITLE)}"))
+                .firstOrNull()
+        }.onFailure { Log.w("Hermes", "Bot Chat lookup failed: ${it.javaClass.simpleName}") }.getOrNull()
+        arrangeSessions(recent, botChat)
+    }
+
+    private fun parseSessions(body: String): List<SessionSummary> =
         arrayIn(body, "sessions", "data", "items").objects().map { o ->
             SessionSummary(
                 id = o.str("id", "session_id"),
-                title = o.str("title", "name").ifBlank { "(untitled)" },
+                title = o.str("title", "name"),
                 updated = o.str("updated_at", "last_active", "last_activity", "created_at"),
                 source = o.str("source", "platform"),
                 preview = o.str("preview", "last_message", "snippet", "summary")
                     .ifBlank { o.optJSONObject("last_message")?.let { contentText(it.opt("content")) }.orEmpty() },
+                pinned = o.optBoolean("pinned", false),
             )
         }.filter { it.id.isNotBlank() }
+
+    /** Pins or unpins a session on the server; it then sorts to the top of every client's list. */
+    suspend fun setPinned(sessionId: String, pinned: Boolean) = withContext(Dispatchers.IO) {
+        requestOk("PATCH", "/api/sessions/${enc(sessionId)}", JSONObject().put("pinned", pinned))
+        Unit
+    }
+
+    /** The session's current title (Hermes names untitled sessions from the first message). */
+    suspend fun sessionTitle(sessionId: String): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            JSONObject(requestOk("GET", "/api/sessions/${enc(sessionId)}")).optJSONObject("session")?.str("title")
+        }.getOrNull()?.ifBlank { null }
     }
 
     /**
@@ -119,8 +146,9 @@ class HermesClient(
             .ifBlank { throw IOException("Fork response had no session id: ${body.take(200)}") }
     }
 
-    suspend fun createSession(title: String): String = withContext(Dispatchers.IO) {
-        val body = requestOk("POST", "/api/sessions", JSONObject().put("title", title))
+    /** Creates an API session. Without a [title], Hermes names it from the first message. */
+    suspend fun createSession(title: String? = null): String = withContext(Dispatchers.IO) {
+        val body = requestOk("POST", "/api/sessions", JSONObject().apply { if (title != null) put("title", title) })
         val o = JSONObject(body)
         o.optJSONObject("session")?.str("id", "session_id")?.takeIf { it.isNotBlank() }
             ?: o.str("id", "session_id")
