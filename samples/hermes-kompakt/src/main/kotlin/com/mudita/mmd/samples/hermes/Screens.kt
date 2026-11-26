@@ -3,6 +3,7 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
 import com.mudita.mmd.components.switcher.SwitchMMD
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -205,8 +206,9 @@ fun SessionsScreen(
                                 onLongClick = { sessionSheet = s },
                                 onClick = { onOpen(s.id, s.title, client.profile.slug, s.source) },
                             )
-                            // No end padding: the scrollbar already sits to the right of the row.
-                            .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
+                            // End padding too: LazyColumnMMD only draws its scrollbar when the
+                            // list can scroll, so a short list would put the time at the edge.
+                            .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -610,11 +612,17 @@ fun ChatScreen(
                 when {
                     catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                     c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)
-                    else -> Column(
-                        Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                    // The stock paged list: ▲/▼ and the pill scrollbar appear when it overflows.
+                    // Sized to its rows up to a cap, since the list fills whatever height it gets.
+                    else -> LazyColumnMMD(
+                        Modifier.fillMaxWidth().height((c.first.size * 56).coerceIn(56, 320).dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        c.first.forEach { m -> ChoiceButton(m.label, selected = m == model) { chooseModel(m) } }
+                        items(c.first) { m ->
+                            Box(Modifier.padding(end = 4.dp)) {
+                                ChoiceButton(m.label, selected = m == model) { chooseModel(m) }
+                            }
+                        }
                     }
                 }
             }
