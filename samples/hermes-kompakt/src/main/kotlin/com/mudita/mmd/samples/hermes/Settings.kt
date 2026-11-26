@@ -84,6 +84,11 @@ object SettingsStore {
 /** Profile slugs as Hermes names them: lowercase letters, digits, `-` and `_`. */
 fun isValidProfileSlug(slug: String): Boolean = Regex("[a-z0-9][a-z0-9_-]*").matches(slug)
 
+/** Android blocks cleartext traffic for this app, so a plain `http://` URL can never connect. */
+fun isCleartextUrl(raw: String): Boolean = raw.trim().startsWith("http://", ignoreCase = true)
+
+const val CLEARTEXT_MESSAGE = "Android blocks plain http:// here. Use an https:// URL (Tailscale serve or a TLS proxy)."
+
 /** Trims, drops trailing slashes and defaults to `https://` when no scheme was typed. */
 fun normalizeUrl(raw: String): String {
     val url = raw.trim().trimEnd('/')

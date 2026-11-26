@@ -151,11 +151,13 @@ class HermesClient(
             }
             try {
                 conn.setRequestProperty("Accept", "text/event-stream")
-                conn.readTimeout = 0 // server sends `: keepalive` every 10 s; the run can be long.
+                // The server sends `: keepalive` every 10 s, so a minute of silence means the
+                // connection is gone; the run itself can still take as long as it needs.
+                conn.readTimeout = 60_000
                 writeJson(conn, JSONObject().put("input", input))
                 val code = conn.responseCode
                 if (code !in 200..299) {
-                    throw HermesApiException(code, conn.errorStream?.bufferedReader()?.readText().orEmpty())
+                    throw HermesApiException(code, conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty())
                 }
                 val text = StringBuilder()
                 conn.inputStream.bufferedReader().use { reader ->
@@ -193,8 +195,8 @@ class HermesClient(
                             }
                         }
                     }
-                    // Stream ended without a terminal event.
-                    emit(ChatEvent.Done(text.toString().ifBlank { null }))
+                    // The stream ended without a terminal event, so the reply is incomplete.
+                    emit(ChatEvent.Failed("the connection closed before the reply finished"))
                 }
             } finally {
                 closer.cancel() // also disconnects

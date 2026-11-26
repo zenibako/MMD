@@ -288,7 +288,7 @@ fun ChatScreen(
                     onSend = { send() },
                     modifier = Modifier.weight(1f),
                 )
-                SendButton(onClick = { send() })
+                SendButton(onClick = { send() }, enabled = historyLoaded && !sending)
             }
         }
     }
@@ -315,14 +315,22 @@ fun SettingsScreen(onDone: () -> Unit) {
             if (status.isNotBlank()) TextMMD(status)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
-                    scope.launch {
-                        val result = HermesClient(s).healthCheck()
-                        status = if (result == "OK") "Hermes is reachable." else "No answer from Hermes: $result"
+                    if (isCleartextUrl(s.baseUrl)) {
+                        status = CLEARTEXT_MESSAGE
+                    } else {
+                        scope.launch {
+                            val result = HermesClient(s).healthCheck()
+                            status = if (result == "OK") "Hermes is reachable." else "No answer from Hermes: $result"
+                        }
                     }
                 }) { TextMMD("Test") }
                 ButtonMMD(onClick = {
-                    SettingsStore.save(context, s)
-                    onDone()
+                    if (isCleartextUrl(s.baseUrl)) {
+                        status = CLEARTEXT_MESSAGE
+                    } else {
+                        SettingsStore.save(context, s)
+                        onDone()
+                    }
                 }) { TextMMD("Save") }
             }
         }

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,14 +53,17 @@ private fun App(start: Screen) {
             onOpen = { id, title, profile, source -> screen = Screen.Chat(id, title, profile, source) },
             onSettings = { screen = Screen.Settings },
         )
-        is Screen.Chat -> ChatScreen(
-            sessionId = s.sessionId,
-            title = s.title,
-            profileSlug = s.profileSlug,
-            source = s.source,
-            onOpenSession = { id, title -> screen = Screen.Chat(id, title, s.profileSlug) },
-            onBack = { screen = Screen.Sessions },
-        )
+        // Keyed by session, so a fork opened from a chat starts with fresh state.
+        is Screen.Chat -> key(s.profileSlug, s.sessionId) {
+            ChatScreen(
+                sessionId = s.sessionId,
+                title = s.title,
+                profileSlug = s.profileSlug,
+                source = s.source,
+                onOpenSession = { id, title -> screen = Screen.Chat(id, title, s.profileSlug) },
+                onBack = { screen = Screen.Sessions },
+            )
+        }
         Screen.Settings -> SettingsScreen(onDone = { screen = Screen.Sessions })
     }
 }
