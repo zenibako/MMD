@@ -121,6 +121,16 @@ object SettingsStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("showToolMessages", show).apply()
     }
 
+    /** Session groups hidden from the list (none by default). */
+    fun hiddenSessionGroups(context: Context): Set<SessionGroup> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("hiddenSessionGroups", emptySet()).orEmpty()
+            .mapNotNull { name -> SessionGroup.entries.firstOrNull { it.name == name } }.toSet()
+
+    fun setHiddenSessionGroups(context: Context, hidden: Set<SessionGroup>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putStringSet("hiddenSessionGroups", hidden.map { it.name }.toSet()).apply()
+    }
+
     fun setActiveProfile(context: Context, slug: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("activeProfile", slug).apply()
     }

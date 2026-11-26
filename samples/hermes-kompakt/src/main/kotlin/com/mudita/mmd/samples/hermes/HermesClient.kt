@@ -45,6 +45,8 @@ data class ChatMessage(
     val kind: MessageKind = MessageKind.CONVERSATION,
     /** Short heading for tool and system entries, e.g. the tool's name. */
     val label: String = "",
+    /** For [MessageKind.TOOL_CALL]: the tools called. */
+    val tools: List<String> = emptyList(),
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
@@ -126,6 +128,12 @@ class HermesClient(
         }.filter { it.id.isNotBlank() }
 
     /** Pins or unpins a session on the server; it then sorts to the top of every client's list. */
+    /** Deletes a session on the server, with its messages. */
+    suspend fun deleteSession(sessionId: String) = withContext(Dispatchers.IO) {
+        requestOk("DELETE", "/api/sessions/${enc(sessionId)}")
+        Unit
+    }
+
     suspend fun setPinned(sessionId: String, pinned: Boolean) = withContext(Dispatchers.IO) {
         requestOk("PATCH", "/api/sessions/${enc(sessionId)}", JSONObject().put("pinned", pinned))
         Unit

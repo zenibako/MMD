@@ -1,14 +1,17 @@
 package com.mudita.mmd.samples.hermes
 
-/** What a history entry is, for the chat's "Show tool and system messages" switch. */
+/** What a history entry is, for how the chat shows it. */
 enum class MessageKind {
     /** What you typed and what the agent answered. Always shown. */
     CONVERSATION,
 
-    /** The agent calling a tool, and the tool's result. */
-    TOOL,
+    /** The agent calling tools ([ChatMessage.tools] names them). Summarized in one line by default. */
+    TOOL_CALL,
 
-    /** System prompts, status and other non-conversation events. */
+    /** A tool's result. Shown only with "Show tool and system messages". */
+    TOOL_RESULT,
+
+    /** System prompts, status and other non-conversation events. Shown only with the switch. */
     SYSTEM,
 }
 
@@ -18,8 +21,8 @@ private val PLAIN_DISPLAY_KINDS = setOf("", "message", "text", "chat")
 /**
  * Turns one `/messages` entry into what the chat shows. Grouping:
  * - `user` / `assistant` text is [MessageKind.CONVERSATION];
- * - an `assistant` entry's tool calls become a [MessageKind.TOOL] line (after its text, if any),
- *   and `tool` entries (results) are [MessageKind.TOOL];
+ * - an `assistant` entry's tool calls become a [MessageKind.TOOL_CALL] (after its text, if any);
+ * - `tool` entries are [MessageKind.TOOL_RESULT];
  * - `system` and any other role, or a non-plain `display_kind`, is [MessageKind.SYSTEM].
  * Entries with nothing to show are dropped.
  */
@@ -41,17 +44,47 @@ fun historyEntries(
         "user" -> listOfNotNull(body.takeIf { it.isNotEmpty() }?.let { ChatMessage("user", it, time) })
         "assistant" -> listOfNotNull(
             body.takeIf { it.isNotEmpty() }?.let { ChatMessage("assistant", it, time) },
-            toolCalls.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }?.let {
-                ChatMessage("assistant", "Called ${it.joinToString(", ")}", time, MessageKind.TOOL, label = "Tool call")
-            },
+            toolCallEntry(toolCalls, time),
         )
         "tool" -> listOf(
-            ChatMessage("tool", body.ifEmpty { "(no output)" }, time, MessageKind.TOOL, label = toolName.ifBlank { "Tool" }),
+            ChatMessage("tool", body.ifEmpty { "(no output)" }, time, MessageKind.TOOL_RESULT, label = toolName.ifBlank { "Tool" }),
         )
         else -> listOfNotNull(body.takeIf { it.isNotEmpty() }?.let { ChatMessage(r, it, time, MessageKind.SYSTEM, label = r) })
     }
 }
 
-/** The messages to show: the conversation only, or everything when [showTools] is on. */
-fun visibleMessages(all: List<ChatMessage>, showTools: Boolean): List<ChatMessage> =
-    if (showTools) all else all.filter { it.kind == MessageKind.CONVERSATION }
+/** A [MessageKind.TOOL_CALL] entry for [names] (deduped, in first-use order), or null if there are none. */
+fun toolCallEntry(names: List<String>, time: Long?): ChatMessage? {
+    val tools = names.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    if (tools.isEmpty()) return null
+    return ChatMessage("assistant", "Called ${tools.joinToString(", ")}", time, MessageKind.TOOL_CALL, label = "Tool call", tools = tools)
+}
+
+/** One-line, high-level summary of tool use, e.g. "Used web_search, read_file". */
+fun toolSummary(tools: List<String>): String = "Used ${tools.distinct().joinToString(", ")}"
+
+/**
+ * What the chat shows. With [showTools] off: the conversation, plus one summary line wherever
+ * the agent used tools between two messages (consecutive calls merged and deduped; results and
+ * system entries hidden). With it on: every entry, in order.
+ */
+fun visibleMessages(all: List<ChatMessage>, showTools: Boolean): List<ChatMessage> {
+    if (showTools) return all
+    val out = mutableListOf<ChatMessage>()
+    for (m in all) {
+        when (m.kind) {
+            MessageKind.CONVERSATION -> out += m
+            MessageKind.TOOL_CALL -> {
+                val prev = out.lastOrNull()
+                if (prev != null && prev.kind == MessageKind.TOOL_CALL) {
+                    val tools = (prev.tools + m.tools).distinct()
+                    out[out.lastIndex] = prev.copy(tools = tools, text = toolSummary(tools))
+                } else {
+                    out += m.copy(text = toolSummary(m.tools))
+                }
+            }
+            MessageKind.TOOL_RESULT, MessageKind.SYSTEM -> Unit
+        }
+    }
+    return out
+}

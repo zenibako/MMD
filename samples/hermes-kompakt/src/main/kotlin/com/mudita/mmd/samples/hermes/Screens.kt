@@ -97,6 +97,7 @@ fun SessionsScreen(
     val profileName = client.profileLabel()
     LaunchedEffect(client) { client.profileName() }
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
+    var hiddenGroups by remember { mutableStateOf(SettingsStore.hiddenSessionGroups(context)) }
     var status by remember { mutableStateOf("Loading…") }
     val fmt = remember { RowTimeFormat() }
 
@@ -143,6 +144,17 @@ fun SessionsScreen(
     var moreSheet by remember { mutableStateOf(false) }
     // The session whose long-press sheet (pin / unpin) is open.
     var sessionSheet by remember { mutableStateOf<SessionSummary?>(null) }
+    var deleteConfirm by remember { mutableStateOf<SessionSummary?>(null) }
+    var filterSheet by remember { mutableStateOf(false) }
+
+    fun delete(s: SessionSummary) {
+        val c = client
+        scope.launch {
+            runCatching { c.deleteSession(s.id) }
+                .onSuccess { if (c === currentClient) refresh() }
+                .onFailure { if (c === currentClient) status = connectionError("Couldn't delete the session", it) }
+        }
+    }
 
     fun setPinned(s: SessionSummary, pinned: Boolean) {
         val c = client
@@ -182,7 +194,7 @@ fun SessionsScreen(
             }
             if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
             LazyColumnMMD(Modifier.fillMaxSize()) {
-                items(sessions, key = { it.id }) { s ->
+                items(filterSessions(sessions, hiddenGroups), key = { it.id }) { s ->
                     // Messages-list row: bold name on one line, date at the right, then one line of
                     // preview (Hermes's preview, else the source), flagged when read-only.
                     Column(
@@ -236,6 +248,36 @@ fun SessionsScreen(
                     sessionSheet = null
                     setPinned(s, !s.pinned)
                 }
+                SheetButton("Delete") {
+                    sessionSheet = null
+                    deleteConfirm = s
+                }
+            }
+        }
+        deleteConfirm?.let { s ->
+            KompaktSheet("Delete this session?", onDismiss = { deleteConfirm = null }, cancelFilled = false) {
+                TextMMD(
+                    sessionTitleOrPlaceholder(s.title),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                SheetButton("Delete", filled = true) {
+                    deleteConfirm = null
+                    delete(s)
+                }
+            }
+        }
+        if (filterSheet) {
+            KompaktSheet("Show", onDismiss = { filterSheet = false }, cancelLabel = "Done") {
+                SessionGroup.entries.forEach { g ->
+                    SheetToggle(g.label, checked = g !in hiddenGroups) { show ->
+                        hiddenGroups = if (show) hiddenGroups - g else hiddenGroups + g
+                        SettingsStore.setHiddenSessionGroups(context, hiddenGroups)
+                    }
+                }
             }
         }
         if (moreSheet) {
@@ -243,6 +285,10 @@ fun SessionsScreen(
                 SheetButton("Refresh") {
                     moreSheet = false
                     refresh()
+                }
+                SheetButton(if (hiddenGroups.isEmpty()) "Filter" else "Filter (some hidden)") {
+                    moreSheet = false
+                    filterSheet = true
                 }
                 SheetButton("Settings") {
                     moreSheet = false
@@ -342,13 +388,18 @@ fun ChatScreen(
         sending = true
         scope.launch {
             try {
+                // Tools this turn used, for the "Used …" line placed before the reply.
+                val usedTools = mutableListOf<String>()
                 runCatching {
                     client.chatStream(sessionId, text).collect { e ->
                         when (e) {
                             // Show which tool is running, but don't repaint per token.
-                            is ChatEvent.Tool ->
+                            is ChatEvent.Tool -> {
                                 working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
+                                usedTools += e.name
+                            }
                             is ChatEvent.Done -> {
+                                toolCallEntry(usedTools, System.currentTimeMillis())?.let { messages.add(it) }
                                 e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
                                 working = null
                                 if (shownTitle.isBlank()) refreshTitle()
@@ -410,10 +461,11 @@ fun ChatScreen(
                 val day = m.time?.let { dayFmt.format(Date(it)) }
                 val previousDay = shown.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
                 if (day != null && day != previousDay) DaySeparator(day)
-                if (m.kind == MessageKind.CONVERSATION) {
-                    MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
-                } else {
-                    EventLine(m.label, m.text)
+                when {
+                    m.kind == MessageKind.CONVERSATION ->
+                        MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
+                    m.kind == MessageKind.TOOL_CALL && !showTools -> ToolSummaryLine(m.text)
+                    else -> EventLine(m.label, m.text)
                 }
             }
         }
@@ -474,6 +526,18 @@ fun ChatScreen(
             }
         }
     }
+}
+
+/** "Used web_search, read_file": one small line between messages where the agent used tools. */
+@Composable
+private fun ToolSummaryLine(text: String) {
+    TextMMD(
+        text,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** A tool call/result or system entry: a small bold heading over a few lines of its text. */
@@ -664,7 +728,14 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
  * renders as grey.
  */
 @Composable
-private fun KompaktSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun KompaktSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    cancelLabel: String = "Cancel",
+    // A confirm sheet makes its action the filled button and Cancel the outlined one.
+    cancelFilled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     BackHandler(onBack = onDismiss)
     Box(
         Modifier
@@ -692,7 +763,7 @@ private fun KompaktSheet(title: String, onDismiss: () -> Unit, content: @Composa
                     textAlign = TextAlign.Center,
                 )
                 content()
-                SheetButton("Cancel", filled = true, onClick = onDismiss)
+                SheetButton(cancelLabel, filled = cancelFilled, onClick = onDismiss)
             }
         }
     }
