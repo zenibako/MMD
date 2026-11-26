@@ -65,6 +65,8 @@ fun MessagesTopBar(
     onBack: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     titleClickLabel: String? = null,
+    // Drawn in the title's box, so a dropdown opened from the title is anchored under it.
+    titleMenu: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -77,36 +79,39 @@ fun MessagesTopBar(
             } else {
                 Box(Modifier.size(8.dp))
             }
-            Column(
-                Modifier
-                    .weight(1f)
-                    .then(
+            Box(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (onTitleClick != null) {
+                                Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    if (label.isNotBlank()) {
+                        TextMMD(label, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextMMD(
+                            title,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         if (onTitleClick != null) {
-                            Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .heightIn(min = 48.dp)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                if (label.isNotBlank()) {
-                    TextMMD(label, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextMMD(
-                        title,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (onTitleClick != null) {
-                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(28.dp))
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(28.dp))
+                        }
                     }
                 }
+                titleMenu()
             }
             Row(verticalAlignment = Alignment.CenterVertically, content = actions)
         }

@@ -3,6 +3,11 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.widthIn
+import com.mudita.mmd.components.menus.DropdownMenuItemMMD
+import com.mudita.mmd.components.menus.DropdownMenuMMD
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material.icons.filled.MoreVert
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
@@ -131,7 +136,7 @@ fun SessionsScreen(
         }
     }
 
-    var profileSheet by remember { mutableStateOf(false) }
+    var profileMenu by remember { mutableStateOf(false) }
     var moreSheet by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
@@ -143,8 +148,19 @@ fun SessionsScreen(
             MessagesTopBar(
                 label = "",
                 title = profileName,
-                onTitleClick = if (settings.profiles.size > 1) ({ profileSheet = true }) else null,
+                onTitleClick = if (settings.profiles.size > 1) ({ profileMenu = true }) else null,
                 titleClickLabel = "Switch profile",
+                titleMenu = {
+                    ProfileDropdown(
+                        settings,
+                        expanded = profileMenu,
+                        onSelect = {
+                            profileMenu = false
+                            switchProfile(it)
+                        },
+                        onDismiss = { profileMenu = false },
+                    )
+                },
             ) {
                 // Refresh and Settings live in the ⋮ sheet, leaving the width to the name.
                 BarIcon(Icons.Filled.MoreVert, "More") { moreSheet = true }
@@ -192,23 +208,13 @@ fun SessionsScreen(
                 }
             }
         }
-        if (profileSheet) {
-            ProfileSheet(
-                settings,
-                onSelect = {
-                    profileSheet = false
-                    switchProfile(it)
-                },
-                onDismiss = { profileSheet = false },
-            )
-        }
         if (moreSheet) {
             KompaktSheet("Menu", onDismiss = { moreSheet = false }) {
-                SheetTextButton("Refresh") {
+                SheetButton("Refresh") {
                     moreSheet = false
                     refresh()
                 }
-                SheetTextButton("Settings") {
+                SheetButton("Settings") {
                     moreSheet = false
                     onSettings()
                 }
@@ -519,9 +525,11 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
 }
 
 /**
- * A menu as the Kompakt's stock apps show them: a full-width sheet at the bottom with a thick
- * top rule, a centred [title], the [content] buttons and a black Cancel. Back and a tap above
- * the sheet close it; there is no dimming, which E Ink renders as grey.
+ * A ⋮ menu as the stock apps (Calendar, Settings) show it: a full-width white sheet at the
+ * bottom with a 3 dp top rule, a centred 25 sp Black title, stacked full-width outlined
+ * buttons with centred 21 sp Black labels, and a filled black Cancel; 16 dp between them and
+ * 12 dp at the sides. Back and a tap above the sheet close it; no dimming, which E Ink
+ * renders as grey.
  */
 @Composable
 private fun KompaktSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -541,86 +549,89 @@ private fun KompaktSheet(title: String, onDismiss: () -> Unit, content: @Composa
         ) {
             HorizontalDividerMMD(thickness = 3.dp)
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 TextMMD(
                     title,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 25.sp),
                     fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center,
                 )
                 content()
-                SheetButton(onClick = onDismiss, filled = true) {
-                    TextMMD(
-                        "Cancel",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+                SheetButton("Cancel", filled = true, onClick = onDismiss)
             }
         }
     }
 }
 
-/** A sheet button with a plain label, as in the stock apps' menus. */
+/** A stock button: full width, 48 dp, 12 dp corners, 2 dp outline or filled black, 21 sp Black label. */
 @Composable
-private fun SheetTextButton(label: String, onClick: () -> Unit) {
-    SheetButton(onClick = onClick) {
-        TextMMD(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-/** Profile picker: one full-width button per profile, the current one bold with a check. */
-@Composable
-private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> Unit, onDismiss: () -> Unit) {
-    // Names come from each profile's /v1/models; fetch the missing ones as the sheet opens.
-    LaunchedEffect(Unit) {
-        settings.profiles
-            .filter { ProfileNames.names[it.slug] == null }
-            .forEach { p -> launch { HermesClient(settings, p).profileName() } }
-    }
-    KompaktSheet("Profiles", onDismiss) {
-        settings.profiles.forEach { p ->
-            val active = p.slug == settings.active.slug
-            SheetButton(onClick = { onSelect(p) }) {
-                TextMMD(
-                    ProfileNames.label(p),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (active) {
-                    Icon(
-                        Icons.Outlined.Check,
-                        contentDescription = "Current profile",
-                        tint = Color.Black,
-                        modifier = Modifier.padding(start = 4.dp).size(24.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** A stock-style sheet button: full width, at least 48 dp, 12 dp corners, 2 dp outline. */
-@Composable
-private fun SheetButton(onClick: () -> Unit, filled: Boolean = false, content: @Composable RowScope.() -> Unit) {
+private fun SheetButton(label: String, filled: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
-    Row(
+    Box(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .then(if (filled) Modifier.background(Color.Black, shape) else Modifier.border(2.dp, Color.Black, shape))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        TextMMD(
+            label,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 21.sp),
+            fontWeight = FontWeight.Black,
+            color = if (filled) Color.White else Color.Black,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * Profile picker, opened from the profile name: an outlined dropdown under the title listing
+ * every profile by name, the current one bold with a check. Names may wrap to two lines.
+ */
+@Composable
+private fun ProfileDropdown(
+    settings: HermesSettings,
+    expanded: Boolean,
+    onSelect: (HermesProfile) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Names come from each profile's /v1/models; fetch the missing ones when the menu opens.
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            settings.profiles
+                .filter { ProfileNames.names[it.slug] == null }
+                .forEach { p -> launch { HermesClient(settings, p).profileName() } }
+        }
+    }
+    DropdownMenuMMD(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.widthIn(min = 220.dp, max = (LocalConfiguration.current.screenWidthDp - 16).dp),
+    ) {
+        settings.profiles.forEach { p ->
+            val active = p.slug == settings.active.slug
+            DropdownMenuItemMMD(
+                text = {
+                    TextMMD(
+                        ProfileNames.label(p),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                trailingIcon = if (active) {
+                    { Icon(Icons.Outlined.Check, contentDescription = "Current profile", tint = Color.Black) }
+                } else {
+                    null
+                },
+                onClick = { onSelect(p) },
+            )
+        }
+    }
 }
