@@ -24,7 +24,7 @@ mirrors that kit.
 
 `res/font/`: Lato Medium (500) and Lato Black (900), plus Regular and Bold if the app needs
 them. MMD ships Black, Bold and Regular (`mmd-core/src/androidMain/res/font`); take Lato
-Medium from the Lato release (OFL). `res/font/lato.xml` is a `<font-family>` with each file
+Medium from the Lato release (OFL); if only MMD's files are at hand, its `lato_semi_bold.ttf` is closer to the stock weight than Regular. `res/font/lato.xml` is a `<font-family>` with each file
 at its weight (`android:fontWeight` and `app:fontWeight` both set).
 
 ## Theme (`values/themes.xml`)

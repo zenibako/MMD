@@ -1,6 +1,6 @@
 ---
 name: kompakt-eink-ui
-description: Design and build Mudita Kompakt E Ink app UI that looks native next to the stock apps (MMD look), in Compose with MMD or Android XML views, and audit it against the phone. Use when designing, building or reviewing any Kompakt or MMD screen.
+description: Design and build Mudita Kompakt E Ink app UI that looks native next to the stock apps (MMD look), in Compose with MMD, Android XML views or CSS (WebView apps such as an Obsidian theme), and audit it against the phone. Use when designing, building or reviewing any Kompakt or MMD screen.
 ---
 
 # Kompakt E Ink UI
@@ -20,6 +20,7 @@ This file holds the rules and numbers. Read the reference that fits the task:
 |---|---|
 | Building or reviewing Compose UI (anything using `ThemeMMD`, `*MMD` components, `@Composable`) | [references/compose.md](references/compose.md): the drop-in `KompaktUi.kt`, component choices, screen recipes |
 | Theming or reviewing an Android XML-view app (layouts, `themes.xml`, Material Components, RecyclerView, Preferences), usually as a build flavor | [references/xml.md](references/xml.md): theme items, drawables, layouts |
+| Theming a WebView or CSS app for the Kompakt (an Obsidian theme, a web page, an Electron/Capacitor app) | [references/web.md](references/web.md): units, border rounding, embedded fonts, scoping to the phone |
 | Checking a rule or an app against the real phone, over adb | [references/audit.md](references/audit.md): how to decode stock APKs, measure screens and drive the phone safely |
 
 For a design question with no code, this file is enough.
@@ -61,7 +62,9 @@ stock app wins: update this file.
 ### Type (Lato, black text)
 
 Stock apps use two weights: **Medium 500** for content and **Black 900** for titles,
-labels and buttons. The Mudita kit's scale:
+labels and buttons. MMD ships no Lato Medium; use its `lato_semi_bold` for 500, because
+Regular reads visibly lighter than the stock apps on the panel (seen on the phone in the
+Obsidian theme). The Mudita kit's scale:
 
 | Use | Size / weight | Kit style |
 |---|---|---|
@@ -151,6 +154,8 @@ next to the stock apps.
 ### Lists
 
 - Rows start text at 16 dp. Heights from the table above; vertical padding about 10 dp.
+  Rows keep their own right margin (about 12 dp): the scrollbar column only appears when
+  the list overflows, so a short list would otherwise run the time into the edge.
 - Single-line row: 21 sp Medium label, an optional value or ">" chevron at the right.
 - Two-line row: 23 sp Black title over a 21 sp Medium summary. Message lists: bold name
   with the time at the right, one line of preview.
@@ -224,10 +229,15 @@ Kinds of sheet, all with that frame:
 | Toggles | what they control ("Show") | 48 dp rows: 21 sp label, switch at the right, whole row toggles; changes apply at once | filled "Done" |
 | Choice | the setting ("Model") | full-width outlined 48 dp options, label at the start; the current one 3 dp, Black, with a check; picking applies and closes | filled Cancel |
 
-- A choice sheet suits up to about six options. Longer lists scroll inside the sheet,
-  capped at about 380 dp so the screen's top stays visible; past a dozen, use a radio
-  sub-screen instead. While options load or after they fail, show one line of text in
-  their place.
+- A choice sheet suits up to about six options. Longer lists page inside the sheet with
+  the same ▲/▼ and pill scrollbar as any list (never a free-scrolling column), sized to
+  their rows up to about 320 dp so the screen's top stays visible; past a dozen, use a
+  radio sub-screen instead. Keep the default option ("Profile default") outside the list,
+  so it is there even when the list fails to load. While options load or after they fail,
+  show one line of text in their place.
+- When a pick has to be accepted by a server, show "Saving…" in the sheet, mark the new
+  option current only once it is accepted, and show a refusal as one line in the sheet,
+  which stays open.
 - Sheets chain, never stack: an action that needs another sheet closes the first.
 - A menu entry that opens a setting shows its current value ("Model: Profile default").
 

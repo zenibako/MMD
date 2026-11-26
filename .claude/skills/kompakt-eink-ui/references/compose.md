@@ -67,8 +67,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -106,7 +104,9 @@ import androidx.compose.ui.unit.sp
 import com.mudita.mmd.R
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
+import androidx.compose.foundation.lazy.items
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
+import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.switcher.SwitchMMD
 import com.mudita.mmd.components.text.TextMMD
 
@@ -125,11 +125,11 @@ object Kompakt {
 }
 
 // Stock type scale: Lato Medium (500) for content, Lato Black (900) for titles and labels.
-// MMD ships no Lato Medium file, so 500 falls back to Regular; add lato_medium.ttf to your
-// app's res/font and list it here for an exact match.
+// MMD ships no Lato Medium file. Regular looks lighter than the stock apps on the panel, so
+// 500 uses MMD's SemiBold; add lato_medium.ttf to your app's res/font for an exact match.
 private val Lato = FontFamily(
     Font(R.font.lato_regular, FontWeight.Normal),
-    Font(R.font.lato_regular, FontWeight.Medium),
+    Font(R.font.lato_semi_bold, FontWeight.Medium),
     Font(R.font.lato_bold, FontWeight.Bold),
     Font(R.font.lato_black, FontWeight.Black),
 )
@@ -409,14 +409,19 @@ fun SheetChoice(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Choices in a sheet, capped so the sheet keeps the screen's top visible. More than about six: use a radio sub-screen. */
+/**
+ * Choices in a sheet: a paged list (▲/▼ and the pill scrollbar once it overflows), sized to its
+ * rows up to 320 dp so the sheet keeps the screen's top visible. Put a default option above it,
+ * outside the list. More than about a dozen: use a radio sub-screen.
+ */
 @Composable
-fun SheetChoices(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+fun <T> SheetChoices(options: List<T>, label: (T) -> String, selected: (T) -> Boolean, onPick: (T) -> Unit) {
+    LazyColumnMMD(
+        Modifier.fillMaxWidth().height((options.size * 56).coerceIn(56, 320).dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        content = content,
-    )
+    ) {
+        items(options) { o -> Box(Modifier.padding(end = 4.dp)) { SheetChoice(label(o), selected(o)) { onPick(o) } } }
+    }
 }
 
 /** A one-line status under the content (loading, an error) with an optional Retry icon at the right. */
@@ -645,9 +650,10 @@ then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconBut
 - A conversation the user can't write to: replace the compose bar's content, don't disable
   it. `KompaktBottomBar { Icon(LockIcon, "Read-only"); /* source icon */; Spacer(Modifier.weight(1f)); OutlinedIconButton(EditIcon, "Continue here") { fork() } }`.
 - A per-conversation choice (Hermes: the model) lives in the chat's ⋮ sheet as
-  `SheetButton("Model: $current")`, which opens a choice sheet of `SheetChoice`s inside
-  `SheetChoices`, the first one "Default". While the options load or fail, the sheet shows
-  one line of text in their place. When a choice overrides a default, say so in the bar's
+  `SheetButton("Model: $current")`, which opens a choice sheet: `SheetChoice("Default", …)`
+  first, then `SheetChoices(models, …)`. While the options load or fail, the sheet shows one
+  line of text in their place. If the server must accept the pick, show "Saving…", update
+  the current option only on success, and show a refusal as a line in the open sheet. When a choice overrides a default, say so in the bar's
   `label`.
 
 **Settings screen**: `KompaktTopBar("Settings", onBack = …)`, then a scrolling column of
