@@ -1,0 +1,44 @@
+#!/bin/sh
+# Reconnect adb to a Kompakt (or any Android phone) without looking up the wireless-debugging port.
+#
+#   tools/kompakt-adb HOST [LAN_HOST]            connect; print the serial it ended up on
+#   tools/kompakt-adb --persist HOST [LAN_HOST]  also switch the phone to the fixed port 5555
+#
+# Order: HOST:5555, then LAN_HOST:5555, then the port that `adb mdns services` advertises for
+# Wireless debugging (`_adb-tls-connect`, same network only). Port 5555 lasts until the phone
+# reboots or Wireless debugging is turned off; after that, run with --persist once a fallback
+# connects (or pass the port shown in Wireless debugging as HOST:PORT).
+# HOST can also come from KOMPAKT_HOST, LAN_HOST from KOMPAKT_LAN_HOST.
+set -u
+persist=0
+if [ "${1:-}" = "--persist" ]; then persist=1; shift; fi
+host="${1:-${KOMPAKT_HOST:-}}"
+lan="${2:-${KOMPAKT_LAN_HOST:-}}"
+[ -n "$host" ] || { echo "usage: $0 [--persist] HOST[:PORT] [LAN_HOST]" >&2; exit 2; }
+
+try() {
+    out=$(adb connect "$1" 2>&1)
+    case "$out" in *"connected to"*) ;; *) return 1 ;; esac
+    [ "$(adb -s "$1" get-state 2>/dev/null)" = "device" ] || return 1
+    serial="$1"
+}
+
+serial=""
+case "$host" in *:*) try "$host" ;; esac
+[ -n "$serial" ] || try "${host%%:*}:5555" || true
+[ -n "$serial" ] || { [ -n "$lan" ] && try "$lan:5555"; } || true
+if [ -z "$serial" ]; then
+    # Wireless debugging advertises its current port over mDNS on the local network.
+    for addr in $(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/ {print $NF}'); do
+        try "$addr" && break
+    done
+fi
+[ -n "$serial" ] || { echo "No device: open Wireless debugging on the phone and pass HOST:PORT from it." >&2; exit 1; }
+
+if [ "$persist" = 1 ] && [ "${serial##*:}" != "5555" ]; then
+    adb -s "$serial" tcpip 5555 >/dev/null && sleep 3
+    target="${serial%%:*}:5555"
+    [ "${host%%:*}" != "${serial%%:*}" ] && target="${host%%:*}:5555"
+    try "$target" || echo "Switched to 5555 but couldn't reconnect yet; run again." >&2
+fi
+echo "$serial"
