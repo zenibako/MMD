@@ -526,6 +526,7 @@ fun ChatScreen(
         val use24h = android.text.format.DateFormat.is24HourFormat(context)
         val zone = java.time.ZoneId.systemDefault()
         val locale = java.util.Locale.getDefault()
+        val dayNames = remember(today) { systemDayNames() }
         // Scrolls like a Messages thread: follows the finger (scrollStep = 0), no scrollbar. The
         // default (jump 4 items, aligned to an item's top) never shows the rest of a long reply.
         LazyColumnMMD(
@@ -538,7 +539,7 @@ fun ChatScreen(
                 // Markers compare calendar days, not their labels.
                 val day = m.time?.let { localDay(it, zone) }
                 val previousDay = shown.getOrNull(i - 1)?.time?.let { localDay(it, zone) }
-                if (day != null && day != previousDay) DaySeparator(dayMarkerLabel(day, today, locale))
+                if (day != null && day != previousDay) DaySeparator(dayMarkerLabel(day, today, locale, dayNames))
                 when {
                     m.kind == MessageKind.CONVERSATION ->
                         MessageBubble(
@@ -837,7 +838,7 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
 /** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those day-relative, else as given. */
 private fun formatUpdated(raw: String, today: java.time.LocalDate, use24h: Boolean): String =
     raw.toDoubleOrNull()?.let {
-        listTimeLabel((it * 1000).toLong(), today, java.time.ZoneId.systemDefault(), java.util.Locale.getDefault(), use24h)
+        listTimeLabel((it * 1000).toLong(), today, java.time.ZoneId.systemDefault(), java.util.Locale.getDefault(), use24h, systemDayNames())
     } ?: raw
 
 /** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
