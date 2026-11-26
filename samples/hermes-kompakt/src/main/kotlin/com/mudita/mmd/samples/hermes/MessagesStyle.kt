@@ -26,6 +26,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -127,21 +131,51 @@ fun BarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
 
 /** The compose bar's send control: an arrow inside an outlined rounded square. */
 @Composable
-fun SendButton(onClick: () -> Unit, enabled: Boolean = true) {
-    // Sized from the Messages compose bar: ~40dp square, thin border, ~24dp icon. The outer
-    // padding keeps a 48dp touch target.
+fun SendButton(onClick: () -> Unit, enabled: Boolean = true) =
+    OutlinedSquareButton(SendOutline, "Send", enabled, onClick)
+
+/**
+ * An icon inside an outlined rounded square, like the Messages send button. Sized from the
+ * Messages compose bar: ~40dp square, thin border, ~24dp icon, inside a 48dp touch target.
+ * Disabled shows the faint (30%) glyph the stock apps use, never grey text.
+ */
+@Composable
+fun OutlinedSquareButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val ink = if (enabled) Color.Black else Color.Black.copy(alpha = 0.3f)
     Box(
         Modifier
             .size(48.dp)
-            .clickable(enabled = enabled, onClickLabel = "Send", onClick = onClick),
+            .clickable(enabled = enabled, onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.size(40.dp).border(1.5.dp, Color.Black, RoundedCornerShape(9.dp)),
+            Modifier.size(40.dp).border(1.5.dp, ink, RoundedCornerShape(9.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(SendOutline, contentDescription = "Send", tint = Color.Black, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = description, tint = ink, modifier = Modifier.size(24.dp))
         }
+    }
+}
+
+/** What started a session, as an icon: a schedule (cron), a board (kanban), or a chat app. */
+fun sourceIcon(source: String): ImageVector = when (source.lowercase()) {
+    "cron", "schedule", "scheduler" -> Icons.Outlined.DateRange
+    "kanban" -> Icons.AutoMirrored.Outlined.List
+    "" -> Icons.Outlined.Lock
+    else -> Icons.Outlined.Email // messaging platforms: telegram, discord, slack, sms…
+}
+
+/** Read-only marker: a lock and the source's icon, small and inline like a status glyph. */
+@Composable
+fun ReadOnlyIcons(source: String, size: androidx.compose.ui.unit.Dp) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Lock, contentDescription = "Read-only", tint = Color.Black, modifier = Modifier.size(size))
+        Icon(
+            sourceIcon(source),
+            contentDescription = "Started from ${source.ifBlank { "another surface" }}",
+            tint = Color.Black,
+            modifier = Modifier.size(size),
+        )
     }
 }
 

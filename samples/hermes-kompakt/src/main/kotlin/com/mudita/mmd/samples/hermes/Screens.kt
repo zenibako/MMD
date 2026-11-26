@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -44,11 +46,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.buttons.OutlinedButtonMMD
-import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import com.mudita.mmd.components.lazy.LazyColumnMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.text_field.TextFieldMMD
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -87,7 +91,7 @@ fun SessionsScreen(
             if (!isActive || c !== currentClient) return@launch
             result
                 .onSuccess { sessions = it; status = "" }
-                .onFailure { status = "Could not reach Hermes: ${it.message}" }
+                .onFailure { status = connectionError("Couldn't load sessions", it) }
         }
     }
     LaunchedEffect(client) {
@@ -148,12 +152,15 @@ fun SessionsScreen(
                         )
                     }
                     val preview = s.preview.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: s.source
-                    TextMMD(
-                        if (s.isReadOnly) "read-only · $preview" else preview,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (s.isReadOnly) ReadOnlyIcons(s.source, 18.dp)
+                        TextMMD(
+                            preview,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 DashedRowDivider()
             }
@@ -189,14 +196,30 @@ fun ChatScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(sessionId) {
-        runCatching { client.messages(sessionId) }
+    var historyFailed by remember { mutableStateOf(false) }
+    var historyAttempt by remember { mutableStateOf(0) }
+    LaunchedEffect(sessionId, historyAttempt) {
+        historyFailed = false
+        working = "Loading…"
+        // One quiet retry: after waking or switching networks, Tailscale can take a few
+        // seconds to reconnect, and the first connect times out.
+        val result = runCatching { client.messages(sessionId) }.recoverCatching {
+            if (it is CancellationException) throw it
+            delay(3_000)
+            client.messages(sessionId)
+        }
+        result
             .onSuccess {
                 messages.clear()
                 messages.addAll(it)
                 working = null
             }
-            .onFailure { working = "Could not load history: ${it.message}" }
+            .onFailure {
+                if (it is CancellationException) throw it
+                Log.w("Hermes", "History load failed", it)
+                working = connectionError("Couldn't load history", it)
+                historyFailed = true
+            }
         // Sending waits for this, so the history snapshot can't replace a message sent meanwhile.
         historyLoaded = true
     }
@@ -263,21 +286,41 @@ fun ChatScreen(
                 MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
             }
         }
-        working?.let { TextMMD(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+        working?.let {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextMMD(it, modifier = Modifier.weight(1f).padding(vertical = 4.dp))
+                if (historyFailed && !sending) {
+                    BarIcon(Icons.Outlined.Refresh, "Retry") {
+                        historyLoaded = false
+                        historyAttempt++
+                    }
+                }
+            }
+        }
         if (readOnly) {
-            // Hermes refuses API turns on sessions owned by cron, kanban or messaging; fork instead.
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                HorizontalDividerMMD(thickness = 3.dp)
-                TextMMD("Started from $source, so it's read-only here.", modifier = Modifier.padding(horizontal = 12.dp))
-                ButtonMMD(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), onClick = {
+            // Hermes refuses API turns on sessions owned by cron, kanban or messaging. In place
+            // of the compose bar: a lock and the source's icon, and a pencil that copies the
+            // session into a writable one ("Continue here").
+            var forking by remember { mutableStateOf(false) }
+            ComposeBar {
+                ReadOnlyIcons(source, 24.dp)
+                Spacer(Modifier.weight(1f))
+                OutlinedSquareButton(Icons.Outlined.Edit, "Continue here", enabled = !forking) {
+                    forking = true
                     working = "Copying…"
                     scope.launch {
                         val newTitle = "$title (Kompakt ${uniqueStamp()})"
                         runCatching { client.forkSession(sessionId, newTitle) }
                             .onSuccess { onOpenSession(it, newTitle) }
-                            .onFailure { working = "Could not continue: ${it.message}" }
+                            .onFailure {
+                                working = connectionError("Couldn't continue", it)
+                                forking = false
+                            }
                     }
-                }) { TextMMD("Continue here") }
+                }
             }
         } else {
             ComposeBar {
@@ -404,3 +447,10 @@ private fun formatUpdated(raw: String, fmt: RowTimeFormat): String =
 
 /** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
 private fun uniqueStamp(): String = java.text.SimpleDateFormat("MMM d HH:mm:ss", java.util.Locale.getDefault()).format(Date())
+
+/** One short line for a failed request; a network failure gets a hint instead of a stack of hosts. */
+fun connectionError(what: String, e: Throwable): String = when (e) {
+    is java.net.SocketTimeoutException, is java.net.ConnectException, is java.net.UnknownHostException ->
+        "$what. Can't reach Hermes; check Tailscale."
+    else -> "$what: ${e.message ?: e.javaClass.simpleName}"
+}
