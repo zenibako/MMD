@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
             else -> Screen.Sessions
         }
         setContent {
-            ThemeMMD {
+            ThemeMMD(typography = KompaktTypography) {
                 Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
                     App(start)
                 }

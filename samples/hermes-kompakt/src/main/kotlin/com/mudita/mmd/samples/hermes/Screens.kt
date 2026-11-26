@@ -3,6 +3,8 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.height
 import com.mudita.mmd.components.switcher.SwitchMMD
 import androidx.compose.runtime.snapshotFlow
@@ -192,7 +194,7 @@ fun SessionsScreen(
             ) {
                 // Refresh and Settings live in the ⋮ sheet, leaving the width to the name.
                 BarIcon(Icons.Filled.MoreVert, "More") { moreSheet = true }
-                PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
+                PrimaryBarIcon("New session") { newSession() }
             }
             if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
             LazyColumnMMD(Modifier.fillMaxSize()) {
@@ -209,8 +211,10 @@ fun SessionsScreen(
                             )
                             // End padding too: LazyColumnMMD only draws its scrollbar when the
                             // list can scroll, so a short list would put the time at the edge.
-                            .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                            // Stock message-list row: 72 dp, text at 16 dp.
+                            .heightIn(min = 72.dp)
+                            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (s.pinned) {
@@ -219,15 +223,14 @@ fun SessionsScreen(
                             TextMMD(
                                 sessionTitleOrPlaceholder(s.title),
                                 modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             TextMMD(
                                 formatUpdated(s.updated, today, use24h),
                                 modifier = Modifier.padding(start = 12.dp),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                             )
                         }
                         val preview = s.preview.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: s.source
@@ -501,8 +504,9 @@ fun ChatScreen(
         }
     }
     LaunchedEffect(shown.size, showTools, historyLoaded) {
-        if (shown.isNotEmpty() && followBottom) {
-            // The offset is clamped, so this shows the end of the last item, not just its top.
+        if (shown.isNotEmpty() && followBottom && !listState.isScrollInProgress) {
+            // Never move the list under the reader's finger: a reply that lands mid-scroll
+            // waits. The offset is clamped, so this shows the end of the last item, not just its top.
             listState.scrollToItem(shown.size - 1, scrollOffset = Int.MAX_VALUE)
         }
     }
@@ -537,7 +541,16 @@ fun ChatScreen(
                 if (day != null && day != previousDay) DaySeparator(dayMarkerLabel(day, today, locale))
                 when {
                     m.kind == MessageKind.CONVERSATION ->
-                        MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeOfDayLabel(it, zone, locale, use24h) })
+                        MessageBubble(
+                            m.text,
+                            mine = m.role == "user",
+                            time = m.time?.let { timeOfDayLabel(it, zone, locale, use24h) },
+                            // Same author next, on the same day: group the two 2 dp apart.
+                            sameAuthorAsNext = shown.getOrNull(i + 1)?.let { n ->
+                                n.kind == MessageKind.CONVERSATION && n.role == m.role &&
+                                    n.time?.let { localDay(it, zone) } == day
+                            } == true,
+                        )
                     m.kind == MessageKind.TOOL_CALL && !showTools -> ToolSummaryLine(m.text)
                     else -> EventLine(m.label, m.text)
                 }
@@ -640,7 +653,7 @@ private fun ToolSummaryLine(text: String) {
     TextMMD(
         text,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
@@ -654,9 +667,9 @@ private fun EventLine(label: String, text: String) {
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         if (label.isNotBlank()) {
-            TextMMD(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
+            TextMMD(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
-        TextMMD(text, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        TextMMD(text, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
     }
     DashedRowDivider()
 }
@@ -677,8 +690,7 @@ private fun ChoiceButton(label: String, selected: Boolean, onClick: () -> Unit) 
         TextMMD(
             label,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            style = if (selected) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyLarge,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -691,20 +703,17 @@ private fun ChoiceButton(label: String, selected: Boolean, onClick: () -> Unit) 
 /** A sheet row with a label and a switch; the whole 48 dp row toggles it. */
 @Composable
 private fun SheetToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    // The whole labelled row is one accessible switch; the switch itself only draws.
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(onClickLabel = label) { onChange(!checked) }
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextMMD(
-            label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 21.sp),
-        )
-        SwitchMMD(checked = checked, onCheckedChange = onChange)
+        TextMMD(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        SwitchMMD(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -767,7 +776,7 @@ private fun ProfilesSection(baseUrl: String, profiles: List<HermesProfile>, onCh
     var key by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
 
-    TextMMD("Other profiles", fontWeight = FontWeight.Bold)
+    TextMMD("Other profiles", style = MaterialTheme.typography.titleSmall)
     profiles.drop(1).forEach { p ->
         Row(
             Modifier.fillMaxWidth(),
@@ -805,7 +814,7 @@ private fun ProfilesSection(baseUrl: String, profiles: List<HermesProfile>, onCh
  */
 @Composable
 private fun DisplayNamesSection(baseUrl: String, profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
-    TextMMD("Display names", fontWeight = FontWeight.Bold)
+    TextMMD("Display names", style = MaterialTheme.typography.titleSmall)
     profiles.forEach { p ->
         val derived = ProfileNames.derived(baseUrl, p.slug)
         Field("${p.slug.ifEmpty { "default" }} (blank: $derived)", p.displayName) { name ->
@@ -882,8 +891,7 @@ private fun KompaktSheet(
                 TextMMD(
                     title,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 25.sp),
-                    fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.titleLarge,
                     textAlign = TextAlign.Center,
                 )
                 content()
@@ -908,8 +916,7 @@ private fun SheetButton(label: String, filled: Boolean = false, onClick: () -> U
     ) {
         TextMMD(
             label,
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 21.sp),
-            fontWeight = FontWeight.Black,
+            style = MaterialTheme.typography.labelLarge,
             color = if (filled) Color.White else Color.Black,
             textAlign = TextAlign.Center,
         )
@@ -947,7 +954,7 @@ private fun ProfileDropdown(
                     TextMMD(
                         ProfileNames.label(settings.baseUrl, p),
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (active) FontWeight.Black else FontWeight.Medium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )

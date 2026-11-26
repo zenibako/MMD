@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -71,13 +73,16 @@ fun MessagesTopBar(
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Title at 16 dp, or at 60 dp after the back arrow, as in the stock bars.
             if (onBack != null) {
-                BarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onBack)
+                Box(Modifier.padding(start = 6.dp).width(54.dp)) {
+                    BarIcon(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onBack)
+                }
             } else {
-                Box(Modifier.size(8.dp))
+                Spacer(Modifier.width(16.dp))
             }
             Box(Modifier.weight(1f)) {
                 Column(
@@ -90,24 +95,22 @@ fun MessagesTopBar(
                                 Modifier
                             },
                         )
-                        .heightIn(min = 48.dp)
-                        .padding(horizontal = 8.dp),
+                        .heightIn(min = 48.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     if (label.isNotBlank()) {
-                        TextMMD(label, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        TextMMD(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextMMD(
                             title,
                             modifier = Modifier.weight(1f, fill = false),
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (onTitleClick != null) {
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(28.dp))
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.padding(start = 4.dp).size(24.dp))
                         }
                     }
                 }
@@ -119,43 +122,59 @@ fun MessagesTopBar(
     }
 }
 
-/** The bar's main action (Messages' "+"): white icon in a filled black rounded square. */
+/**
+ * The screen's one create action, as in Messages: a black 42 x 36 dp rectangle with 8 dp
+ * corners and a white line "+", in a 48 dp tall target.
+ */
 @Composable
-fun PrimaryBarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
+fun PrimaryBarIcon(description: String, onClick: () -> Unit) {
     Box(
         Modifier
-            .padding(start = 4.dp)
-            .size(48.dp)
-            .background(Color.Black, RoundedCornerShape(10.dp))
+            .padding(start = 4.dp, end = 4.dp)
+            .size(width = 42.dp, height = 48.dp)
             .clickable(onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = Color.White, modifier = Modifier.size(30.dp))
+        Box(Modifier.size(42.dp, 36.dp).background(Color.Black, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+            Icon(PlusLine, contentDescription = description, tint = Color.White, modifier = Modifier.size(22.dp))
+        }
     }
 }
 
-/** Row separator in Messages' conversation list: a thin dashed line, inset like the row text. */
+/** The stock "+": two 2 dp strokes with round caps. */
+private val PlusLine: ImageVector by lazy {
+    ImageVector.Builder("PlusLine", 24.dp, 24.dp, 24f, 24f).apply {
+        path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round) {
+            moveTo(3f, 12f)
+            lineTo(21f, 12f)
+            moveTo(12f, 3f)
+            lineTo(12f, 21f)
+        }
+    }.build()
+}
+
+/** Row separator: 1 dp dashed (2 on, 2 off) from the 16 dp text inset to the right edge. */
 @Composable
 fun DashedRowDivider() {
-    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(start = 20.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(1.dp).padding(start = 16.dp)) {
         drawLine(
             color = Color.Black,
             start = Offset(0f, size.height / 2),
             end = Offset(size.width, size.height / 2),
             strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx())),
         )
     }
 }
 
-/** A plain icon action, 48dp touch target, as in the Messages top bar. */
+/** A plain icon action: a 28 dp glyph in a 48 dp target, as in the stock top bars. */
 @Composable
 fun BarIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
     Box(
         Modifier.size(48.dp).clickable(onClickLabel = description, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = Color.Black, modifier = Modifier.size(30.dp))
+        Icon(icon, contentDescription = description, tint = Color.Black, modifier = Modifier.size(28.dp))
     }
 }
 
@@ -179,7 +198,7 @@ fun OutlinedSquareButton(icon: ImageVector, description: String, enabled: Boolea
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            Modifier.size(40.dp).border(1.5.dp, ink, RoundedCornerShape(9.dp)),
+            Modifier.size(40.dp).border(2.dp, ink, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = description, tint = ink, modifier = Modifier.size(24.dp))
@@ -224,29 +243,31 @@ fun ComposeBar(content: @Composable RowScope.() -> Unit) {
 }
 
 /**
- * One chat message, as the Messages app draws them: outlined, never filled. Received messages
- * sit on the left with a thin outline and a square bottom-left corner; yours sit on the right
- * with a thicker outline. The time goes underneath, on the same side.
+ * One chat message, as the Messages app draws them: outlined, never filled, 12 dp corners with
+ * one square "tail" corner. Received: left, 1 dp, square bottom-left. Yours: right, 2 dp, square
+ * bottom-right. 18 sp text, 10/8 dp padding, the time 4 dp under it on the same side. Messages
+ * from one author sit 2 dp apart ([sameAuthorAsNext]); a change of author gets 18 dp.
  */
 @Composable
-fun MessageBubble(text: String, mine: Boolean, time: String?) {
-    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.86f).dp
+fun MessageBubble(text: String, mine: Boolean, time: String?, sameAuthorAsNext: Boolean = false) {
+    val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
+    val r = 12.dp
     val shape = if (mine) {
-        RoundedCornerShape(14.dp)
+        RoundedCornerShape(topStart = r, topEnd = r, bottomEnd = 0.dp, bottomStart = r)
     } else {
-        RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 0.dp)
+        RoundedCornerShape(topStart = r, topEnd = r, bottomEnd = r, bottomStart = 0.dp)
     }
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = if (sameAuthorAsNext) 2.dp else 18.dp),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         Box(
             Modifier
                 .widthIn(max = maxWidth)
-                .border(if (mine) 2.5.dp else 1.dp, Color.Black, shape)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .border(if (mine) 2.dp else 1.dp, Color.Black, shape)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            TextMMD(text, style = MaterialTheme.typography.bodyLarge)
+            TextMMD(text, style = MaterialTheme.typography.bodyMedium)
         }
         if (!time.isNullOrBlank()) {
             TextMMD(time, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
