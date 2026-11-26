@@ -106,12 +106,16 @@ fun SessionsScreen(
         settings = settings.copy(activeProfile = next.slug)
     }
 
-    fun newSession() = scope.launch {
-        // Hermes requires unique session titles, so stamp each one with the time.
-        val title = "Kompakt ${uniqueStamp()}"
-        runCatching { client.createSession(title) }
-            .onSuccess { onOpen(it, title, client.profile.slug, "api_server") }
-            .onFailure { status = "Could not start a session: ${it.message}" }
+    fun newSession() {
+        val c = client
+        scope.launch {
+            // Hermes requires unique session titles, so stamp each one with the time.
+            val title = "Kompakt ${uniqueStamp()}"
+            runCatching { c.createSession(title) }
+                .onSuccess { if (c === currentClient) onOpen(it, title, c.profile.slug, "api_server") }
+                // An error from a profile we've since left belongs to that profile, not this list.
+                .onFailure { if (c === currentClient) status = connectionError("Couldn't start a session", it) }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -197,6 +201,9 @@ fun ChatScreen(
     val focusManager = LocalFocusManager.current
 
     var historyFailed by remember { mutableStateOf(false) }
+    // Fork progress is shown apart from history status, which a late history load would clear.
+    var forking by remember { mutableStateOf(false) }
+    var forkStatus by remember { mutableStateOf<String?>(null) }
     var historyAttempt by remember { mutableStateOf(0) }
     LaunchedEffect(sessionId, historyAttempt) {
         historyFailed = false
@@ -213,6 +220,9 @@ fun ChatScreen(
                 messages.clear()
                 messages.addAll(it)
                 working = null
+                // Sending waits for this, so the history snapshot can't replace a message sent
+                // meanwhile, and a later Retry can't wipe a message that never reached Hermes.
+                historyLoaded = true
             }
             .onFailure {
                 if (it is CancellationException) throw it
@@ -220,8 +230,6 @@ fun ChatScreen(
                 working = connectionError("Couldn't load history", it)
                 historyFailed = true
             }
-        // Sending waits for this, so the history snapshot can't replace a message sent meanwhile.
-        historyLoaded = true
     }
 
     fun send() {
@@ -286,7 +294,7 @@ fun ChatScreen(
                 MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
             }
         }
-        working?.let {
+        (forkStatus ?: working)?.let {
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -304,19 +312,18 @@ fun ChatScreen(
             // Hermes refuses API turns on sessions owned by cron, kanban or messaging. In place
             // of the compose bar: a lock and the source's icon, and a pencil that copies the
             // session into a writable one ("Continue here").
-            var forking by remember { mutableStateOf(false) }
             ComposeBar {
                 ReadOnlyIcons(source, 24.dp)
                 Spacer(Modifier.weight(1f))
                 OutlinedSquareButton(Icons.Outlined.Edit, "Continue here", enabled = !forking) {
                     forking = true
-                    working = "Copying…"
+                    forkStatus = "Copying…"
                     scope.launch {
                         val newTitle = "$title (Kompakt ${uniqueStamp()})"
                         runCatching { client.forkSession(sessionId, newTitle) }
                             .onSuccess { onOpenSession(it, newTitle) }
                             .onFailure {
-                                working = connectionError("Couldn't continue", it)
+                                forkStatus = connectionError("Couldn't continue", it)
                                 forking = false
                             }
                     }
@@ -343,6 +350,8 @@ fun SettingsScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var s by remember { mutableStateOf(SettingsStore.load(context)) }
     var status by remember { mutableStateOf("") }
+    // Bumped by every URL edit and Test tap, so a slow Test can't overwrite a newer result.
+    var testSeq by remember { mutableStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
         MessagesTopBar(label = "Hermes", title = "Settings")
@@ -350,7 +359,10 @@ fun SettingsScreen(onDone: () -> Unit) {
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Field("Hermes URL", s.baseUrl) { s = s.copy(baseUrl = it) }
+            Field("Hermes URL", s.baseUrl) {
+                s = s.copy(baseUrl = it)
+                testSeq++
+            }
             Field("API key (API_SERVER_KEY)", s.profiles.first().apiKey) { key ->
                 s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
             }
@@ -358,11 +370,14 @@ fun SettingsScreen(onDone: () -> Unit) {
             if (status.isNotBlank()) TextMMD(status)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
+                    val seq = ++testSeq
                     if (isCleartextUrl(s.baseUrl)) {
                         status = CLEARTEXT_MESSAGE
                     } else {
+                        val tested = s
                         scope.launch {
-                            val result = HermesClient(s).healthCheck()
+                            val result = HermesClient(tested).healthCheck()
+                            if (seq != testSeq) return@launch
                             status = if (result == "OK") "Hermes is reachable." else "No answer from Hermes: $result"
                         }
                     }

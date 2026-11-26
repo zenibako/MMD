@@ -2,9 +2,11 @@ package com.mudita.mmd.samples.hermes
 
 import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -142,7 +144,8 @@ class HermesClient(
         coroutineScope {
             // A blocking readLine() ignores cancellation (keepalives never reach an emit), so
             // closing the connection is what unblocks it when the chat is left mid-run.
-            val closer = launch {
+            // UNDISPATCHED so its finally is armed before any cancellation can arrive.
+            val closer = launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     awaitCancellation()
                 } finally {
@@ -155,14 +158,25 @@ class HermesClient(
                 // connection is gone; the run itself can still take as long as it needs.
                 conn.readTimeout = 60_000
                 writeJson(conn, JSONObject().put("input", input))
+                // disconnect() is a no-op before the request starts, so re-check once it has.
+                ensureActive()
                 val code = conn.responseCode
                 if (code !in 200..299) {
-                    throw HermesApiException(code, conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty())
+                    // Keep the status even if the optional, size-capped detail read fails.
+                    val detail = runCatching {
+                        conn.errorStream?.bufferedReader()?.use { r ->
+                            val buf = CharArray(2048)
+                            val n = r.read(buf)
+                            if (n > 0) String(buf, 0, n) else ""
+                        }
+                    }.getOrNull().orEmpty()
+                    throw HermesApiException(code, detail)
                 }
                 val text = StringBuilder()
                 conn.inputStream.bufferedReader().use { reader ->
                     for (e in reader.sseEvents()) {
-                        Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}: ${e.data.take(300)}")
+                        // Event names only: payloads carry conversation text.
+                        Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}")
                         val data = runCatching { JSONObject(e.data) }.getOrNull() ?: JSONObject()
                         when (e.event.ifBlank { data.str("type", "event") }) {
                             "assistant.delta", "message.delta", "response.output_text.delta" -> {
@@ -186,7 +200,7 @@ class HermesClient(
                                 return@use
                             }
                             "run.failed", "run.cancelled", "run.interrupted" -> {
-                                Log.w("Hermes", "Run ended with ${e.event}: ${e.data.take(1000)}")
+                                Log.w("Hermes", "Run ended with ${e.event}")
                                 val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
                                     ?.str("message", "detail", "type")
                                     ?: data.str("error", "message", "reason", "detail")

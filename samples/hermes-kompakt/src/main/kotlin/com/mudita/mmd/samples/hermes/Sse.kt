@@ -17,8 +17,9 @@ private const val MAX_EVENT_CHARS = 1024 * 1024
 fun BufferedReader.sseEvents(): Sequence<SseEvent> = sequence {
     var event = ""
     val data = StringBuilder()
+    val lines = BoundedLineReader(this@sseEvents, MAX_LINE_CHARS)
     while (true) {
-        val line = readBoundedLine(MAX_LINE_CHARS) ?: break
+        val line = lines.next() ?: break
         when {
             line.isEmpty() -> {
                 if (data.isNotEmpty() || event.isNotEmpty()) {
@@ -36,28 +37,37 @@ fun BufferedReader.sseEvents(): Sequence<SseEvent> = sequence {
             }
         }
     }
-    if (data.isNotEmpty()) yield(SseEvent(event, data.toString()))
+    // An event without its closing blank line is incomplete (the connection dropped
+    // mid-frame), so it is dropped rather than dispatched.
 }
 
 /**
- * Like [BufferedReader.readLine] (ends at `\n`, `\r` or `\r\n`), but fails once a line passes
- * [max] chars instead of buffering an unterminated line without bound.
+ * Like [BufferedReader.readLine] (lines end at `\n`, `\r` or `\r\n`), but fails once a line
+ * passes [max] chars instead of buffering an unterminated line without bound. A line ends as
+ * soon as `\r` arrives; a `\n` right after it is skipped on the next read, so a CR-only server
+ * isn't kept waiting for one more byte.
  */
-private fun BufferedReader.readBoundedLine(max: Int): String? {
-    val line = StringBuilder()
-    while (true) {
-        val c = read()
-        when {
-            c == -1 -> return if (line.isEmpty()) null else line.toString()
-            c == '\n'.code -> return line.toString()
-            c == '\r'.code -> {
-                // Swallow the `\n` of a `\r\n` pair.
-                mark(1)
-                if (read() != '\n'.code) reset()
-                return line.toString()
+private class BoundedLineReader(private val reader: BufferedReader, private val max: Int) {
+    private var skipLf = false
+
+    fun next(): String? {
+        val line = StringBuilder()
+        while (true) {
+            val c = reader.read()
+            if (skipLf) {
+                skipLf = false
+                if (c == '\n'.code) continue
             }
-            line.length >= max -> throw IOException("SSE line over $max chars")
-            else -> line.append(c.toChar())
+            when {
+                c == -1 -> return if (line.isEmpty()) null else line.toString()
+                c == '\n'.code -> return line.toString()
+                c == '\r'.code -> {
+                    skipLf = true
+                    return line.toString()
+                }
+                line.length >= max -> throw IOException("SSE line over $max chars")
+                else -> line.append(c.toChar())
+            }
         }
     }
 }
