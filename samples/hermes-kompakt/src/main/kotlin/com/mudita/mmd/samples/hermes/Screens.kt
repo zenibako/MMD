@@ -318,11 +318,23 @@ fun ChatScreen(
         HermesClient(settings, settings.profile(profileSlug))
     }
     val profileName = client.profileLabel()
-    // The model this session runs on: saved per server, profile and session; null is the
-    // profile's default. Sent with each run as a one-off override, so "Profile default" is
-    // simply not sending one.
+    // The model picked for this session: locked on the server (see lockSessionModel) and
+    // remembered here per server, profile and session for display; null is the profile's
+    // default.
     val modelKey = remember { sessionModelKey(SettingsStore.load(context).baseUrl, profileSlug, sessionId) }
     var model by remember { mutableStateOf(SettingsStore.sessionModel(context, modelKey)) }
+    // A pick saved by an older build was never locked on the server: lock it once on open, and
+    // forget it if Hermes refuses, so the header never claims a model the chat isn't using.
+    LaunchedEffect(sessionId) {
+        model?.let { m ->
+            runCatching { client.lockSessionModel(sessionId, m) }.onFailure {
+                if (it is HermesApiException) {
+                    model = null
+                    SettingsStore.setSessionModel(context, modelKey, null)
+                }
+            }
+        }
+    }
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var draft by remember { mutableStateOf("") }
@@ -396,7 +408,7 @@ fun ChatScreen(
                 // Tools this turn used, for the "Used …" line placed before the reply.
                 val usedTools = mutableListOf<String>()
                 runCatching {
-                    client.chatStream(sessionId, text, model).collect { e ->
+                    client.chatStream(sessionId, text).collect { e ->
                         when (e) {
                             // Show which tool is running, but don't repaint per token.
                             is ChatEvent.Tool -> {
@@ -447,10 +459,32 @@ fun ChatScreen(
         }
     }
 
+    var modelSaving by remember { mutableStateOf(false) }
+    var lockError by remember { mutableStateOf<String?>(null) }
+
+    // Shown as picked only once Hermes has accepted the lock.
     fun chooseModel(choice: ModelChoice?) {
-        model = choice
-        SettingsStore.setSessionModel(context, modelKey, choice)
-        modelSheet = false
+        if (choice == model || modelSaving) {
+            modelSheet = false
+            return
+        }
+        val target = lockTarget(choice, catalog?.second)
+        if (target == null) {
+            lockError = "Hermes didn't say which model is the profile's default."
+            return
+        }
+        modelSaving = true
+        lockError = null
+        scope.launch {
+            runCatching { client.lockSessionModel(sessionId, target) }
+                .onSuccess {
+                    model = choice
+                    SettingsStore.setSessionModel(context, modelKey, choice)
+                    modelSheet = false
+                }
+                .onFailure { lockError = connectionError("Hermes didn't accept ${target.model}", it) }
+            modelSaving = false
+        }
     }
     val shown = visibleMessages(messages, showTools)
 
@@ -571,6 +605,8 @@ fun ChatScreen(
                     "Profile default" + (c?.second?.let { " (${it.model})" } ?: ""),
                     selected = model == null,
                 ) { chooseModel(null) }
+                lockError?.let { TextMMD(it, style = MaterialTheme.typography.bodyLarge) }
+                if (modelSaving) TextMMD("Saving…", style = MaterialTheme.typography.bodyLarge)
                 when {
                     catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                     c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)

@@ -51,3 +51,14 @@ class ModelChoiceTest {
         assertEquals(sessionModelKey("https://h.example", "", "s1"), sessionModelKey("h.example", "", "s1"))
     }
 }
+
+class LockTargetTest {
+    private val default = ModelChoice("anthropic", "claude-opus-5-5")
+    private val pick = ModelChoice("openrouter", "glm-5")
+
+    @Test fun pickLocksToThePick() = assertEquals(pick, lockTarget(pick, default))
+
+    @Test fun profileDefaultLocksToTheDefaultModel() = assertEquals(default, lockTarget(null, default))
+
+    @Test fun profileDefaultWithoutAKnownDefaultHasNoTarget() = assertNull(lockTarget(null, null))
+}
