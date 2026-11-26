@@ -37,16 +37,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.mudita.mmd.R as MmdR
-import com.mudita.mmd.components.buttons.ButtonMMD
-import com.mudita.mmd.components.buttons.OutlinedButtonMMD
-import com.mudita.mmd.components.menus.DropdownMenuItemMMD
-import com.mudita.mmd.components.menus.DropdownMenuMMD
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.samples.twofold.game.Direction
@@ -80,67 +74,67 @@ fun GameScreen(
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
-        KompaktTopBar(
-            label = "${stringResource(R.string.app_name)} · Best ${state.best}",
-            title = "Score ${state.score}",
-            actions = {
-                // Undo is the one action used mid-game, so it stays on the bar; the rest live in
-                // the overflow menu, as in MMD's own menu sample.
-                BarIcon(UndoIcon, "Undo", enabled = state.canUndo) { onUpdate { it.undo() } }
-                Box {
-                    BarIcon(MoreIcon, "More options") { menuOpen = true }
-                    DropdownMenuMMD(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItemMMD(
-                            text = { TextMMD("New game") },
-                            onClick = {
-                                menuOpen = false
-                                onUpdate { it.restart() }
-                            },
+    // The ⋮ sheet draws over the whole screen, so the game sits in a Box under it.
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            KompaktTopBar(
+                title = stringResource(R.string.app_name),
+                actions = {
+                    // Undo is the one action used mid-game, so it stays on the bar; the rest
+                    // open in a bottom sheet behind ⋮, as in the stock apps.
+                    BarIcon(UndoIcon, "Undo", enabled = state.canUndo) { onUpdate { it.undo() } }
+                    BarIcon(MoreIcon, "Menu") { menuOpen = true }
+                },
+            )
+
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    // Swipes are read anywhere between the bars, not just on the board,
+                    // so a slightly-off swipe still lands.
+                    .swipeToMove(onMove)
+                    .padding(horizontal = Kompakt.TextInset, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextMMD("Score ${state.score}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    TextMMD("Best ${state.best}", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                }
+                Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                    Board(state, tileStyle)
+                    when {
+                        state.hasWon -> Overlay(
+                            title = "You made $GOAL_TILE",
+                            body = "${state.moves} moves. Keep going?",
+                            primary = "Keep going" to { onUpdate { it.continuePastGoal() } },
+                            secondary = "New game" to { onUpdate { it.restart() } },
                         )
-                        DashedRowDivider()
-                        DropdownMenuItemMMD(
-                            text = { TextMMD("Tile style") },
-                            onClick = {
-                                menuOpen = false
-                                pickingStyle = true
-                            },
+                        state.isGameOver -> Overlay(
+                            title = "No moves left",
+                            body = "Score ${state.score}.",
+                            primary = "New game" to { onUpdate { it.restart() } },
+                            secondary = if (state.canUndo) "Undo" to { onUpdate { it.undo() } } else null,
                         )
                     }
                 }
-            },
-        )
+            }
 
-        Box(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                // Swipes are read anywhere between the bars, not just on the board,
-                // so a slightly-off swipe still lands.
-                .swipeToMove(onMove)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                Board(state, tileStyle)
-                when {
-                    state.hasWon -> Overlay(
-                        title = "You made $GOAL_TILE",
-                        body = "${state.moves} moves. Keep going for a bigger tile?",
-                        primary = "Keep going" to { onUpdate { it.continuePastGoal() } },
-                        secondary = "New game" to { onUpdate { it.restart() } },
-                    )
-                    state.isGameOver -> Overlay(
-                        title = "No moves left",
-                        body = "Score ${state.score}. Undo the last move or start again.",
-                        primary = "New game" to { onUpdate { it.restart() } },
-                        secondary = if (state.canUndo) "Undo" to { onUpdate { it.undo() } } else null,
-                    )
+            KompaktBottomBar { DirectionPad(onMove) }
+        }
+
+        if (menuOpen) {
+            KompaktSheet(title = "Menu", onDismiss = { menuOpen = false }) {
+                SheetButton("New game") {
+                    menuOpen = false
+                    onUpdate { it.restart() }
+                }
+                SheetButton("Tile style") {
+                    menuOpen = false
+                    pickingStyle = true
                 }
             }
         }
-
-        BottomBar { DirectionPad(onMove) }
     }
 }
 
@@ -164,6 +158,7 @@ private fun Board(state: GameState, style: TileStyle) {
     }
 }
 
+/** The in-game result card over the board (kept as an overlay so the final board stays visible). */
 @Composable
 private fun Overlay(
     title: String,
@@ -171,7 +166,7 @@ private fun Overlay(
     primary: Pair<String, () -> Unit>,
     secondary: Pair<String, () -> Unit>?,
 ) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) {
         Column(
             Modifier
                 .fillMaxWidth()
@@ -181,13 +176,13 @@ private fun Overlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TextMMD(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            TextMMD(body, textAlign = TextAlign.Center)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextMMD(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            TextMMD(body, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (secondary != null) {
-                    OutlinedButtonMMD(onClick = secondary.second) { TextMMD(secondary.first) }
+                    KompaktButton(secondary.first, filled = false, modifier = Modifier.weight(1f), onClick = secondary.second)
                 }
-                ButtonMMD(onClick = primary.second) { TextMMD(primary.first) }
+                KompaktButton(primary.first, filled = true, modifier = Modifier.weight(1f), onClick = primary.second)
             }
         }
     }
@@ -200,39 +195,43 @@ private fun Overlay(
 @Composable
 private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        KompaktTopBar(label = stringResource(R.string.app_name), title = "Tile style", onBack = onBack)
-        TileStyle.entries.forEachIndexed { i, style ->
-            if (i > 0) DashedRowDivider()
-            // Rows share the screen height evenly, so all styles fit without scrolling.
+        KompaktTopBar(title = "Tile style", onBack = onBack)
+        TileStyle.entries.forEach { style ->
+            // Radio rows as in stock Settings: radio at 16 dp, label at about 61 dp, a dashed
+            // divider from the label. Rows share the height, so all styles fit without paging.
             Row(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .selectable(selected = style == selected, onClick = { onSelect(style) })
-                    .padding(horizontal = 12.dp),
+                    .padding(start = Kompakt.TextInset, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButtonMMD(selected = style == selected, onClick = null)
-                Spacer(Modifier.width(8.dp))
+                Box(Modifier.width(StyleLabelInset - Kompakt.TextInset)) {
+                    RadioButtonMMD(selected = style == selected, onClick = null)
+                }
                 Column(Modifier.weight(1f)) {
-                    TextMMD(style.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    TextMMD(style.description, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextMMD(style.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                    TextMMD(style.description, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.width(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    listOf(2, 16, 256, 2048).forEach {
+                    listOf(2, 256, 2048).forEach {
                         StyledTile(it, style, Modifier.size(34.dp), scale = 0.42f)
                     }
                 }
             }
+            DashedRowDivider(start = StyleLabelInset)
         }
     }
 }
 
+/** Where radio-row labels start, as in the stock Settings radio screens. */
+private val StyleLabelInset = 61.dp
+
 /**
- * On-screen arrows for people who prefer tapping to swiping. Drawn like the system Messages
- * app's send button: a 40dp outlined rounded square with a 24dp icon in a 48dp touch target,
- * using MMD's own chevron drawables.
+ * On-screen arrows for people who prefer tapping to swiping: the skill's outlined icon button
+ * (40 dp square, 2 dp stroke, 10 dp corners, 24 dp icon, 48 dp target) with MMD's chevrons.
  */
 @Composable
 private fun RowScope.DirectionPad(onMove: (Direction) -> Unit) {
@@ -252,7 +251,7 @@ private fun RowScope.DirectionPad(onMove: (Direction) -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Box(
-                Modifier.size(40.dp).border(1.5.dp, Ink, RoundedCornerShape(9.dp)),
+                Modifier.size(40.dp).border(2.dp, Ink, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(painterResource(chevron), contentDescription = null, tint = Ink, modifier = Modifier.size(24.dp))

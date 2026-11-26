@@ -21,12 +21,11 @@ Slide the board up, down, left or right. Equal tiles that touch merge into their
     white corner grows.
   - *Steps*: one dot along the bottom of the tile per doubling.
 - **Swipe or tap.** Swipe anywhere below the top bar, or use the four arrow buttons.
-- **Kompakt bars.** The bars follow the Hermes sample, which copied the Kompakt's built-in
-  Messages app: a small label (best score) over a bold title (score), 30 dp icons in 48 dp
-  targets, and a 3 dp rule under the top bar and over the bottom bar. Undo sits on the bar; New
-  game and Tile style are in the ⋮ overflow menu (`DropdownMenuMMD`). The arrow buttons are drawn
-  like Messages' send button (outlined rounded square) with MMD's chevron icons, and the Tile
-  style screen uses dashed, inset row dividers.
+- **Kompakt look.** The UI follows the repo's `kompakt-eink-ui` skill, taken from the stock
+  apps: Lato Medium/Black type scale, a 64 dp top bar with a 25 sp Black title and a 3 dp
+  rule, Undo on the bar and the rest in a ⋮ bottom sheet (New game, Tile style, Cancel), 48 dp
+  buttons with 12 dp corners, 2/2 dashed dividers, and outlined arrow buttons with MMD's
+  chevrons. Tile style is a radio sub-screen with a back arrow.
 - **Undo.** One step back, including after **New**, so an accidental tap never loses a game.
 - **Offline.** No permissions. The game is saved after every move.
 

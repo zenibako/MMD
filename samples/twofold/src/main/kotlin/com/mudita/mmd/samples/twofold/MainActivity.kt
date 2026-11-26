@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
         val saved = GameCodec.decode(prefs.getString(KEY_GAME, null))
 
         setContent {
-            ThemeMMD {
+            ThemeMMD(typography = KompaktTypography) {
                 Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
                     var state by remember { mutableStateOf(saved ?: GameState.new()) }
                     // Save after every move so the game survives the app being killed.

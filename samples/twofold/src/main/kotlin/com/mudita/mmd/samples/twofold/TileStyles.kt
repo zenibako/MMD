@@ -13,6 +13,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.contentDescription
@@ -26,8 +28,8 @@ import androidx.compose.ui.unit.sp
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.samples.twofold.game.GOAL_TILE
 
-internal val Ink = Color.Black
-internal val Paper = Color.White
+val Ink = Color.Black
+val Paper = Color.White
 
 /** MMD's corner radius for buttons and cards. */
 private val MmdCorner = RoundedCornerShape(8.dp)
@@ -39,9 +41,9 @@ private val MmdCorner = RoundedCornerShape(8.dp)
 enum class TileStyle(val label: String, val description: String) {
     WEIGHT("Weight", "Heavier, then solid"),
     ROUNDED("Rounded", "Weight, rounded"),
-    FRAMES("Frames", "A frame per doubling"),
+    FRAMES("Frames", "Frame per doubling"),
     INK("Ink", "Solid, framed"),
-    NUMBERS("Numbers", "Plain grid, bolder digits"),
+    NUMBERS("Numbers", "Bolder digits"),
     FOLD("Fold", "Corner folds in"),
     STEPS("Steps", "A dot per doubling"),
     ;
@@ -62,10 +64,11 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
     fun d(dp: Dp) = (dp.value * scale).coerceAtLeast(1f).dp
 
     if (value == null) {
+        // Empty cells: a dashed outline instead of a grey one, so the board stays pure black and white.
         val empty = when (style) {
             TileStyle.NUMBERS -> modifier.border(d(1.dp), Ink)
-            TileStyle.ROUNDED -> modifier.border(d(1.dp), Ink.copy(alpha = 0.25f), MmdCorner)
-            else -> modifier.border(d(1.dp), Ink.copy(alpha = 0.25f))
+            TileStyle.ROUNDED -> modifier.dashedOutline(d(1.dp), corner = 8.dp)
+            else -> modifier.dashedOutline(d(1.dp))
         }
         Box(empty)
         return
@@ -140,10 +143,10 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
         TileStyle.NUMBERS -> when {
             value >= 64 -> FontWeight.Black
             value >= 8 -> FontWeight.Bold
-            else -> FontWeight.Light
+            else -> FontWeight.Medium
         }
         TileStyle.INK -> FontWeight.Bold
-        else -> if (value >= 8) FontWeight.Bold else FontWeight.Normal
+        else -> if (value >= 8) FontWeight.Bold else FontWeight.Medium
     }
     // Shrink digits inside nested frames so they stay clear of the lines.
     val frameShrink = if (style == TileStyle.FRAMES && !solid) 1f - 0.08f * (level(value) - 1) else 1f
@@ -159,6 +162,20 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             maxLines = 1,
         )
     }
+}
+
+/** A 1 dp dashed (2/2) outline, like the stock list dividers. */
+private fun Modifier.dashedOutline(stroke: Dp, corner: Dp = 0.dp): Modifier = drawBehind {
+    val w = stroke.toPx()
+    val dash = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx()))
+    val inset = w / 2
+    drawRoundRect(
+        color = Ink,
+        topLeft = Offset(inset, inset),
+        size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner.toPx()),
+        style = Stroke(width = w, pathEffect = dash),
+    )
 }
 
 /** Fills a right triangle in the top-right corner, [fraction] of the tile's shorter side. */
