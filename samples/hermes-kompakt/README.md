@@ -91,6 +91,11 @@ own sessions, memory and `API_SERVER_KEY`. The app talks to one gateway URL:
   key. Requests go to `/p/<profile>/api/...`, which needs the gateway to serve profiles from
   one listener (`gateway.multiplex_profiles`). A named prefix rejects the default key with
   `401`. `/health` always stays at the root.
+* To skip typing long keys on the phone, run `tools/import-profiles.py` on a computer that can
+  SSH to the Hermes host and reach the phone over adb. It reads each
+  `HERMES_<NAME>_GATEWAY_API_KEY` from the server's `.env`, checks which slug answers, and
+  pushes a one-time import file that the app merges on its next start and then deletes.
+  Keys are never printed.
 
 The sessions screen's title and the label on agent replies show the profile's name, taken
 from the model id in `GET /v1/models` (the profile name, `API_SERVER_MODEL_NAME` if set, or

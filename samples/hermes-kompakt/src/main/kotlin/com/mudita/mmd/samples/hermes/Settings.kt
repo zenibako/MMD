@@ -1,8 +1,10 @@
 package com.mudita.mmd.samples.hermes
 
 import android.content.Context
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * One Hermes profile on the server. [slug] "" is the default profile, served at the root
@@ -59,6 +61,39 @@ object SettingsStore {
             .remove("ntfyToken")
             .remove("urgentPriority")
             .apply()
+    }
+
+    /** Name of the one-time import file in the app's external files dir. */
+    const val IMPORT_FILE = "profiles-import.json"
+
+    /**
+     * Merges profiles from a one-time import file, then deletes the file. tools/import-profiles.py
+     * pushes it over adb so long API keys never have to be typed on the phone. The format is
+     * `[{"slug": "researcher", "apiKey": "…"}]`. The default profile is never touched, and a
+     * slug that already exists gets the imported key. Returns how many profiles were merged.
+     */
+    fun importPendingProfiles(context: Context): Int {
+        val file = File(context.getExternalFilesDir(null) ?: return 0, IMPORT_FILE)
+        if (!file.exists()) return 0
+        return try {
+            val incoming = JSONArray(file.readText()).objects()
+                .map { HermesProfile(it.optString("slug").trim(), it.optString("apiKey").trim()) }
+                .filter { isValidProfileSlug(it.slug) && it.apiKey.isNotBlank() }
+                .distinctBy { it.slug }
+            if (incoming.isNotEmpty()) {
+                val s = load(context)
+                val kept = s.profiles.filterNot { p -> incoming.any { it.slug == p.slug } }
+                save(context, s.copy(profiles = kept + incoming))
+            }
+            Log.i("Hermes", "Imported ${incoming.size} profile(s): ${incoming.joinToString { it.slug }}")
+            incoming.size
+        } catch (e: Exception) {
+            Log.w("Hermes", "Profile import failed: ${e.javaClass.simpleName}")
+            0
+        } finally {
+            // The file holds API keys: never leave it behind, even if it couldn't be read.
+            file.delete()
+        }
     }
 
     fun setActiveProfile(context: Context, slug: String) {

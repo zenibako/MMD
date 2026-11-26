@@ -30,6 +30,8 @@ sealed interface Screen {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pick up profiles pushed by tools/import-profiles.py before reading the settings.
+        SettingsStore.importPendingProfiles(this)
         val start: Screen = when {
             !SettingsStore.load(this).isHermesConfigured -> Screen.Settings
             else -> Screen.Sessions
