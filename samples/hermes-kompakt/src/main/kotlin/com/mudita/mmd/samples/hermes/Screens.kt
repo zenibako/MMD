@@ -3,8 +3,15 @@
 package com.mudita.mmd.samples.hermes
 
 import androidx.compose.foundation.clickable
-import com.mudita.mmd.components.menus.DropdownMenuItemMMD
-import com.mudita.mmd.components.menus.DropdownMenuMMD
+import com.mudita.mmd.components.divider.HorizontalDividerMMD
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.outlined.Check
@@ -123,58 +130,72 @@ fun SessionsScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        // Like the Messages list: one bold title (the profile, as Messages shows "SMS"), plain
-        // icons, and the main action as a filled "+".
-        MessagesTopBar(label = "", title = profileName) {
-            // A menu of profiles; with only the default profile there is nothing to switch.
-            if (settings.profiles.size > 1) {
-                ProfileMenu(settings, onSelect = { switchProfile(it) })
-            }
-            BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
-            BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
-            PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
-        }
-        if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
-        LazyColumnMMD(Modifier.fillMaxSize()) {
-            items(sessions, key = { it.id }) { s ->
-                // Messages-list row: bold name on one line, date at the right, then one line of
-                // preview (Hermes's preview, else the source), flagged when read-only.
-                Column(
-                    Modifier.fillMaxWidth()
-                        .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
-                        // No end padding: the scrollbar already sits to the right of the row.
-                        .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextMMD(
-                            s.title,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        TextMMD(
-                            formatUpdated(s.updated, fmt),
-                            modifier = Modifier.padding(start = 12.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    val preview = s.preview.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: s.source
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (s.isReadOnly) ReadOnlyIcons(s.source, 18.dp)
-                        TextMMD(
-                            preview,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+    var profileSheet by remember { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Like the Messages list: one bold title (the profile, as Messages shows "SMS"), plain
+            // icons, and the main action as a filled "+".
+            MessagesTopBar(label = "", title = profileName) {
+                // Opens the profile sheet; with only the default profile there is nothing to switch.
+                if (settings.profiles.size > 1) {
+                    BarIcon(Icons.Outlined.Person, "Switch profile") { profileSheet = true }
                 }
-                DashedRowDivider()
+                BarIcon(Icons.Outlined.Refresh, "Refresh") { refresh() }
+                BarIcon(Icons.Outlined.Settings, "Settings", onSettings)
+                PrimaryBarIcon(Icons.Outlined.Add, "New session") { newSession() }
             }
+            if (status.isNotBlank()) TextMMD(status, modifier = Modifier.padding(16.dp))
+            LazyColumnMMD(Modifier.fillMaxSize()) {
+                items(sessions, key = { it.id }) { s ->
+                    // Messages-list row: bold name on one line, date at the right, then one line of
+                    // preview (Hermes's preview, else the source), flagged when read-only.
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clickable { onOpen(s.id, s.title, client.profile.slug, s.source) }
+                            // No end padding: the scrollbar already sits to the right of the row.
+                            .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextMMD(
+                                s.title,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            TextMMD(
+                                formatUpdated(s.updated, fmt),
+                                modifier = Modifier.padding(start = 12.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        val preview = s.preview.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: s.source
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (s.isReadOnly) ReadOnlyIcons(s.source, 18.dp)
+                            TextMMD(
+                                preview,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    DashedRowDivider()
+                }
+            }
+        }
+        if (profileSheet) {
+            ProfileSheet(
+                settings,
+                onSelect = {
+                    profileSheet = false
+                    switchProfile(it)
+                },
+                onDismiss = { profileSheet = false },
+            )
         }
     }
 }
@@ -480,42 +501,94 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
     else -> "$what: ${e.message ?: e.javaClass.simpleName}"
 }
 
-/** The person icon opens a menu listing every profile, with a check on the active one. */
+/**
+ * Profile picker as the Kompakt's stock apps show menus: a full-width sheet at the bottom with
+ * a thick top rule, a centred title, one full-width outlined button per profile (the current
+ * one bold with a check) and a black Cancel. Names get the whole button width and may wrap.
+ */
 @Composable
-private fun ProfileMenu(settings: HermesSettings, onSelect: (HermesProfile) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    // Names come from each profile's /v1/models; fetch the missing ones when the menu opens.
-    LaunchedEffect(open) {
-        if (open) {
-            settings.profiles
-                .filter { ProfileNames.names[it.slug] == null }
-                .forEach { p -> launch { HermesClient(settings, p).profileName() } }
-        }
+private fun ProfileSheet(settings: HermesSettings, onSelect: (HermesProfile) -> Unit, onDismiss: () -> Unit) {
+    BackHandler(onBack = onDismiss)
+    // Names come from each profile's /v1/models; fetch the missing ones as the sheet opens.
+    LaunchedEffect(Unit) {
+        settings.profiles
+            .filter { ProfileNames.names[it.slug] == null }
+            .forEach { p -> launch { HermesClient(settings, p).profileName() } }
     }
-    Box {
-        BarIcon(Icons.Outlined.Person, "Switch profile") { open = true }
-        DropdownMenuMMD(expanded = open, onDismissRequest = { open = false }) {
-            settings.profiles.forEach { p ->
-                val active = p.slug == settings.active.slug
-                DropdownMenuItemMMD(
-                    text = {
+    Box(
+        Modifier
+            .fillMaxSize()
+            // Tapping above the sheet closes it; no dimming, which E Ink renders as grey.
+            .clickable(interactionSource = null, indication = null, onClick = onDismiss),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                // Swallow taps on the sheet itself so they don't dismiss it.
+                .clickable(interactionSource = null, indication = null, onClick = {}),
+        ) {
+            HorizontalDividerMMD(thickness = 3.dp)
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextMMD(
+                    "Profiles",
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                )
+                settings.profiles.forEach { p ->
+                    val active = p.slug == settings.active.slug
+                    SheetButton(onClick = { onSelect(p) }) {
                         TextMMD(
                             ProfileNames.label(p),
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    },
-                    trailingIcon = if (active) {
-                        { Icon(Icons.Outlined.Check, contentDescription = "Current profile", tint = Color.Black) }
-                    } else {
-                        null
-                    },
-                    onClick = {
-                        open = false
-                        onSelect(p)
-                    },
-                )
+                        if (active) {
+                            Icon(
+                                Icons.Outlined.Check,
+                                contentDescription = "Current profile",
+                                tint = Color.Black,
+                                modifier = Modifier.padding(start = 4.dp).size(24.dp),
+                            )
+                        }
+                    }
+                }
+                SheetButton(onClick = onDismiss, filled = true) {
+                    TextMMD(
+                        "Cancel",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
+}
+
+/** A stock-style sheet button: full width, at least 48 dp, 12 dp corners, 2 dp outline. */
+@Composable
+private fun SheetButton(onClick: () -> Unit, filled: Boolean = false, content: @Composable RowScope.() -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .then(if (filled) Modifier.background(Color.Black, shape) else Modifier.border(2.dp, Color.Black, shape))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }
