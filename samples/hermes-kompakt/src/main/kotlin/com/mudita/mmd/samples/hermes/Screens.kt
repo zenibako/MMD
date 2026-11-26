@@ -100,7 +100,8 @@ fun SessionsScreen(
     var sessions by remember { mutableStateOf<List<SessionSummary>>(emptyList()) }
     var hiddenGroups by remember { mutableStateOf(SettingsStore.hiddenSessionGroups(context)) }
     var status by remember { mutableStateOf("Loading…") }
-    val fmt = remember { RowTimeFormat() }
+    val today = rememberToday()
+    val use24h = android.text.format.DateFormat.is24HourFormat(context)
 
     val currentClient by rememberUpdatedState(client)
     var refreshJob by remember { mutableStateOf<Job?>(null) }
@@ -224,7 +225,7 @@ fun SessionsScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             TextMMD(
-                                formatUpdated(s.updated, fmt),
+                                formatUpdated(s.updated, today, use24h),
                                 modifier = Modifier.padding(start = 12.dp),
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -517,8 +518,10 @@ fun ChatScreen(
         ) {
             BarIcon(Icons.Filled.MoreVert, "More") { chatSheet = true }
         }
-        val timeFmt = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
-        val dayFmt = remember { java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault()) }
+        val today = rememberToday()
+        val use24h = android.text.format.DateFormat.is24HourFormat(context)
+        val zone = java.time.ZoneId.systemDefault()
+        val locale = java.util.Locale.getDefault()
         // Scrolls like a Messages thread: follows the finger (scrollStep = 0), no scrollbar. The
         // default (jump 4 items, aligned to an item's top) never shows the rest of a long reply.
         LazyColumnMMD(
@@ -528,12 +531,13 @@ fun ChatScreen(
             isScrollbarVisible = false,
         ) {
             itemsIndexed(shown) { i, m ->
-                val day = m.time?.let { dayFmt.format(Date(it)) }
-                val previousDay = shown.getOrNull(i - 1)?.time?.let { dayFmt.format(Date(it)) }
-                if (day != null && day != previousDay) DaySeparator(day)
+                // Markers compare calendar days, not their labels.
+                val day = m.time?.let { localDay(it, zone) }
+                val previousDay = shown.getOrNull(i - 1)?.time?.let { localDay(it, zone) }
+                if (day != null && day != previousDay) DaySeparator(dayMarkerLabel(day, today, locale))
                 when {
                     m.kind == MessageKind.CONVERSATION ->
-                        MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeFmt.format(Date(it)) })
+                        MessageBubble(m.text, mine = m.role == "user", time = m.time?.let { timeOfDayLabel(it, zone, locale, use24h) })
                     m.kind == MessageKind.TOOL_CALL && !showTools -> ToolSummaryLine(m.text)
                     else -> EventLine(m.label, m.text)
                 }
@@ -821,20 +825,11 @@ private fun Field(label: String, value: String, onChange: (String) -> Unit) {
     )
 }
 
-/** Like a messages list: today's times as "4:19 PM", older ones as "23 Nov". */
-private class RowTimeFormat {
-    private val time = DateFormat.getTimeInstance(DateFormat.SHORT)
-    private val day = java.text.SimpleDateFormat("dd MMM", java.util.Locale.getDefault())
-
-    fun format(date: Date): String {
-        val today = android.text.format.DateUtils.isToday(date.time)
-        return if (today) time.format(date) else day.format(date)
-    }
-}
-
-/** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those as a date, else as given. */
-private fun formatUpdated(raw: String, fmt: RowTimeFormat): String =
-    raw.toDoubleOrNull()?.let { fmt.format(Date((it * 1000).toLong())) } ?: raw
+/** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those day-relative, else as given. */
+private fun formatUpdated(raw: String, today: java.time.LocalDate, use24h: Boolean): String =
+    raw.toDoubleOrNull()?.let {
+        listTimeLabel((it * 1000).toLong(), today, java.time.ZoneId.systemDefault(), java.util.Locale.getDefault(), use24h)
+    } ?: raw
 
 /** Date and time to the second, e.g. "Nov 23 16:21:05", to keep session titles unique. */
 private fun uniqueStamp(): String =
