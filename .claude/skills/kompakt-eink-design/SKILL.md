@@ -9,7 +9,7 @@ These rules make a third-party app look and behave like the Kompakt's own apps. 
 numbers come from the stock apps themselves (MuditaOS K build 20261116): decoded resources
 of Messages, Contacts, Phone, Calendar and Alarm, and on-device measurements of Settings,
 Notes, Calendar, Alarm, Meditation, Weather and the launcher. See
-[the audit](../../../docs/kompakt-ui-audit.md) for the evidence and for how the Hermes,
+`docs/kompakt-ui-audit.md` in the MMD repo (zenibako/MMD) for the evidence and for how the Hermes,
 Twofold and ntfy Kompakt apps compared.
 
 Implementation skills carry these numbers into code:
