@@ -99,9 +99,10 @@ own sessions, memory and `API_SERVER_KEY`. The app talks to one gateway URL:
 
 The sessions screen's title and the label on agent replies show the profile's name, taken
 from the model id in `GET /v1/models` (the profile name, `API_SERVER_MODEL_NAME` if set, or
-`hermes-agent` for the default profile, shown as "Hermes"). When more than one profile is
-configured, "Profile" in the top bar switches to the next one and reloads its sessions. A
-chat stays on the profile it was opened from.
+`hermes-agent` for the default profile, shown as "Hermes"). To give a profile a friendlier
+label, set `API_SERVER_MODEL_NAME` for that profile on the server. When more than one profile
+is configured, the name in the top bar opens a menu of profiles; picking one reloads its
+sessions. A chat stays on the profile it was opened from.
 
 ## Next steps
 
