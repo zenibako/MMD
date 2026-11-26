@@ -418,6 +418,7 @@ fun SettingsScreen(onDone: () -> Unit) {
                 s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
             }
             ProfilesSection(s.profiles) { s = s.copy(profiles = it) }
+            DisplayNamesSection(s.profiles) { s = s.copy(profiles = it) }
             if (status.isNotBlank()) TextMMD(status)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButtonMMD(onClick = {
@@ -461,7 +462,7 @@ private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<Herme
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextMMD(
-                "${p.slug} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
+                "${ProfileNames.label(p)} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
                 modifier = Modifier.weight(1f),
             )
             OutlinedButtonMMD(onClick = { onChange(profiles - p) }) { TextMMD("Remove") }
@@ -483,6 +484,21 @@ private fun ProfilesSection(profiles: List<HermesProfile>, onChange: (List<Herme
             }
         }
     }) { TextMMD("Add profile") }
+}
+
+/**
+ * Optional custom names, one field per profile. A saved name wins over the one derived from
+ * Hermes; leaving a field blank goes back to the derived name. Display only.
+ */
+@Composable
+private fun DisplayNamesSection(profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
+    TextMMD("Display names", fontWeight = FontWeight.Bold)
+    profiles.forEach { p ->
+        val derived = displayNameFor(ProfileNames.names[p.slug] ?: p.slug)
+        Field("${p.slug.ifEmpty { "default" }} (blank: $derived)", p.displayName) { name ->
+            onChange(profiles.map { if (it.slug == p.slug) it.copy(displayName = name) else it })
+        }
+    }
 }
 
 @Composable

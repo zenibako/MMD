@@ -11,7 +11,12 @@ import java.io.File
  * routes; any other slug is reached under `/p/<slug>/` (multiplexed gateway). Each profile
  * has its own `API_SERVER_KEY`.
  */
-data class HermesProfile(val slug: String, val apiKey: String) {
+data class HermesProfile(
+    val slug: String,
+    val apiKey: String,
+    /** A name the user chose in Settings; blank uses the name derived from Hermes. Display only. */
+    val displayName: String = "",
+) {
     val isDefault: Boolean get() = slug.isEmpty()
 }
 
@@ -92,7 +97,11 @@ object SettingsStore {
         if (incoming.isNotEmpty()) {
             val s = load(context)
             val kept = s.profiles.filterNot { p -> incoming.any { it.slug == p.slug } }
-            if (!save(context, s.copy(profiles = kept + incoming), sync = true)) {
+            // A re-import replaces the key but keeps a display name the user chose.
+            val merged = incoming.map { inc ->
+                inc.copy(displayName = s.profiles.firstOrNull { it.slug == inc.slug }?.displayName.orEmpty())
+            }
+            if (!save(context, s.copy(profiles = kept + merged), sync = true)) {
                 // Keep the file so the next start retries the import.
                 Log.w("Hermes", "Profile import not saved; will retry on next start")
                 return 0
@@ -112,7 +121,9 @@ object SettingsStore {
     private fun readProfiles(json: String?, legacyKey: String): List<HermesProfile> {
         val stored = json?.let { raw ->
             runCatching {
-                JSONArray(raw).objects().map { HermesProfile(it.optString("slug"), it.optString("apiKey")) }
+                JSONArray(raw).objects().map {
+                    HermesProfile(it.optString("slug"), it.optString("apiKey"), it.optString("displayName"))
+                }
             }.getOrNull()
         }.orEmpty()
         val default = stored.firstOrNull { it.isDefault } ?: HermesProfile("", legacyKey)
@@ -120,7 +131,11 @@ object SettingsStore {
     }
 
     private fun writeProfiles(profiles: List<HermesProfile>): String = JSONArray().apply {
-        profiles.forEach { put(JSONObject().put("slug", it.slug.trim()).put("apiKey", it.apiKey.trim())) }
+        profiles.forEach {
+            val o = JSONObject().put("slug", it.slug.trim()).put("apiKey", it.apiKey.trim())
+            if (it.displayName.isNotBlank()) o.put("displayName", it.displayName.trim())
+            put(o)
+        }
     }.toString()
 }
 

@@ -78,19 +78,15 @@ class HermesClient(
     }
 
     /**
-     * The profile's name, from the model id `GET /v1/models` reports. Hermes sets that id to
-     * the profile name (`API_SERVER_MODEL_NAME` overrides it), or `hermes-agent` for the
-     * default profile, which is shown as "Hermes". Null if it can't be fetched.
+     * The model id `GET /v1/models` reports for this profile: the profile name
+     * (`API_SERVER_MODEL_NAME` overrides it), or `hermes-agent` for the default profile.
+     * Cached raw; [ProfileNames.label] turns it into a display name. Null if it can't be fetched.
      */
     suspend fun profileName(): String? = withContext(Dispatchers.IO) {
         ProfileNames.names[profile.slug]?.let { return@withContext it }
         runCatching {
             val id = arrayIn(requestOk("GET", "/v1/models"), "data").objects().firstOrNull()?.str("id").orEmpty()
-            when {
-                id.isBlank() -> null
-                id == "hermes-agent" -> "Hermes"
-                else -> id
-            }
+            id.ifBlank { null }
         }.onSuccess { name -> name?.let { ProfileNames.names[profile.slug] = it } }.onFailure { Log.w("Hermes", "Could not read profile name: $it") }.getOrNull()
     }
 
@@ -262,11 +258,16 @@ class HermesClient(
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 }
 
-/** Display names fetched from each profile's `/v1/models`, keyed by slug, for this process. */
+/** Model ids fetched from each profile's `/v1/models`, keyed by slug, for this process. */
 object ProfileNames {
     val names = mutableStateMapOf<String, String>()
 
-    fun label(profile: HermesProfile): String = names[profile.slug] ?: profile.slug.ifEmpty { "Default" }
+    /**
+     * What to show for [profile]: a name the user saved in Settings, else [displayNameFor]
+     * the model id Hermes reported (or the slug until it has answered).
+     */
+    fun label(profile: HermesProfile): String =
+        profile.displayName.trim().ifEmpty { displayNameFor(names[profile.slug] ?: profile.slug) }
 }
 
 /** Hermes sends times as epoch seconds, sometimes fractional (`1795466275.71`). */
