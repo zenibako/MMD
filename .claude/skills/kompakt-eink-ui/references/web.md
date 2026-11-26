@@ -62,10 +62,26 @@ touch leaves the last hover painted on E Ink.
 | Icons | Solid black, never 30% (chevrons, handles, counts). Hide decorative icons in sheets |
 | Highlights, callouts, code | Outlined, no tint; text highlight as inverse |
 
+### Things that grey a black line
+
+Seen on the phone in Obsidian; check for the same in any WebView app.
+
+- **Compositing:** `backdrop-filter` (blur) and `will-change` put an element on its own
+  layer, and its 3 dp rules then render grey. On sheets and bars set
+  `backdrop-filter: none; will-change: auto`.
+- **Fades:** a `::after` gradient over an edge (Obsidian's settings header) greys the rule
+  under it. Hide it.
+- **Extra hairlines:** a `::before` 1 px line on rows doubles the dashed divider. Remove it
+  so only the dashes show.
+- **Faint greys:** cap any remaining grey at the 30% faint (graph nodes, placeholders).
+
 ## Working on the phone
 
 - Find real class names with the WebView's remote devtools (`chrome://inspect` over adb)
   before writing selectors; class names remembered from docs are often wrong.
+- An adb long-press on a list or tree row may start a drag instead of opening its menu.
+  Open the menu by dispatching a `contextmenu` event on the row from devtools, and never
+  pick an action in it.
 - Reload the stylesheet in place rather than restarting the app; in Obsidian,
   `app.customCss.requestLoadTheme()` from devtools.
 - Keep fixes found on the device in one marked block at the end of the file
