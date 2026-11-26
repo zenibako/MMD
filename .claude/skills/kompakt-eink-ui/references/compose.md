@@ -66,7 +66,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -251,11 +257,21 @@ fun KompaktRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    // A switch row: the whole labelled row is one accessible switch, and the switch is drawn at the end.
+    checked: Boolean? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
 ) {
     Column {
         Row(
             Modifier.fillMaxWidth().heightIn(min = minHeight)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(
+                    when {
+                        checked != null && onCheckedChange != null ->
+                            Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+                        onClick != null -> Modifier.clickable(onClick = onClick)
+                        else -> Modifier
+                    },
+                )
                 .padding(start = Kompakt.TextInset, end = 12.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -275,18 +291,23 @@ fun KompaktRow(
             if (trailing != null) {
                 Spacer(Modifier.width(12.dp))
                 trailing()
+            } else if (checked != null) {
+                Spacer(Modifier.width(12.dp))
+                SwitchMMD(checked = checked, onCheckedChange = null)
             }
         }
         DashedRowDivider(start = if (leading != null) Kompakt.IconTextInset else Kompakt.TextInset)
     }
 }
 
-/** Message-list row (72 dp): bold name with the time at the right, one line of preview. */
+/** Message-list row (72 dp): bold name with the time at the right, one line of preview. Long-press opens the item sheet. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ConversationRow(name: String, time: String, preview: String, onClick: () -> Unit) {
+fun ConversationRow(name: String, time: String, preview: String, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     Column {
         Column(
-            Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onClick)
+            Modifier.fillMaxWidth().heightIn(min = 72.dp)
+                .combinedClickable(onClickLabel = "Open", onLongClickLabel = "Actions", onLongClick = onLongClick, onClick = onClick)
                 .padding(horizontal = Kompakt.TextInset, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
@@ -359,7 +380,12 @@ fun KompaktSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             TextMMD(title, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            content()
+            // Title and close button stay put; only the middle scrolls if it can't fit (large font sizes).
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                content = content,
+            )
             SheetButton(closeLabel, filled = closeFilled, onClick = onDismiss)
         }
     }
@@ -375,12 +401,12 @@ fun SheetButton(label: String, filled: Boolean = false, onClick: () -> Unit) =
 fun SheetToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = Kompakt.Touch)
-            .clickable(onClickLabel = label) { onChange(!checked) }
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TextMMD(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        SwitchMMD(checked = checked, onCheckedChange = onChange)
+        SwitchMMD(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -583,7 +609,7 @@ Box(Modifier.fillMaxSize()) {
         if (status.isNotBlank()) TextMMD(status, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
         if (rows.isEmpty()) EmptyState("No messages", "Start a conversation with +.", null)
         else LazyColumnMMD(Modifier.fillMaxSize()) {
-            items(rows, key = { it.id }) { r -> ConversationRow(r.name, r.time, r.preview) { onOpen(r) } }
+            items(rows, key = { it.id }) { r -> ConversationRow(r.name, r.time, r.preview, onLongClick = { itemSheet = r }) { onOpen(r) } }
         }
     }
     if (menu) {
@@ -613,8 +639,8 @@ Box(Modifier.fillMaxSize()) {
 }
 ```
 
-Rows open on tap and offer their actions on long-press:
-`Modifier.combinedClickable(onClickLabel = "Open", onLongClickLabel = "Actions", onLongClick = { itemSheet = r }, onClick = { onOpen(r) })`.
+Rows open on tap and offer their actions on long-press (`ConversationRow`'s `onLongClick`;
+for your own rows, `Modifier.combinedClickable(onLongClick = …, onClick = …)`).
 Mark a pinned row with a 20 dp `PinIcon` before its name and sort pinned rows first; mark a
 read-only row with an 18 dp `LockIcon` before its preview. Filters persist in settings and
 the ⋮ entry says when some rows are hidden.
@@ -626,7 +652,7 @@ Items are `DropdownMenuItemMMD` with 21 sp labels that may wrap to two lines, th
 Black with a `CheckIcon`. Only with two or more peers; otherwise the title is plain.
 
 **Conversation screen**: `KompaktTopBar(contactName, onBack = …)`, a
-`LazyColumnMMD(Modifier.weight(1f), scrollStep = 0, isScrollbarVisible = false)` of day
+`LazyColumnMMD(Modifier.weight(1f), state = listState, scrollStep = 0, isScrollbarVisible = false)` of day
 markers and `MessageBubble`s, a `StatusLine` while working or after a failure (with `onRetry` when history failed to load),
 then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconButton(SendOutlineIcon, "Send") { send() } }`.
 
@@ -634,14 +660,21 @@ then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconBut
   a reply doesn't undo scrolling up to read:
 
   ```kotlin
+  val listState = rememberLazyListState()
+  var followBottom by remember { mutableStateOf(true) }
+  // Decide only once a scroll settles: following resumes if the reader ended at the bottom.
   LaunchedEffect(listState) {
       snapshotFlow { listState.isScrollInProgress }.collect { if (!it) followBottom = !listState.canScrollForward }
   }
   LaunchedEffect(items.size) {
-      // The offset is clamped, so this shows the end of a long last item, not just its top.
-      if (items.isNotEmpty() && followBottom) listState.scrollToItem(items.size - 1, scrollOffset = Int.MAX_VALUE)
+      // Never move the list under the reader's finger. The offset is clamped, so this shows
+      // the end of a long last item, not just its top.
+      if (items.isNotEmpty() && followBottom && !listState.isScrollInProgress) {
+          listState.scrollToItem(items.size - 1, scrollOffset = Int.MAX_VALUE)
+      }
   }
   ```
+  A reply that lands during a scroll waits; the reader reaches it by scrolling to the end.
   Sending sets `followBottom = true`.
 - Agent or system activity: an `ActivityLine("Used web_search, read_file")` between bubbles.
   Full tool calls and system entries stay hidden behind a ⋮ > `SheetToggle("Show tool and
@@ -657,8 +690,8 @@ then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconBut
   `label`.
 
 **Settings screen**: `KompaktTopBar("Settings", onBack = …)`, then a scrolling column of
-`SectionHeader` and `KompaktRow`s: `trailing = { SwitchMMD(checked, onCheckedChange = null) }`
-with `onClick` toggling; `trailing = { Icon(ChevronRightIcon, null) }` for sub-pages; a radio
+`SectionHeader` and `KompaktRow`s: `KompaktRow("Label", checked = on, onCheckedChange = { on = it })`
+for switches (one accessible switch per row); `trailing = { Icon(ChevronRightIcon, null) }` for sub-pages; a radio
 sub-screen of `KompaktRow(minHeight = 62.dp, leading = { RadioButtonMMD(selected, null) })`.
 Form fields use `TextFieldMMD`, and actions are `KompaktButton("Test", filled = false)` next to
 `KompaktButton("Save", filled = true)`.

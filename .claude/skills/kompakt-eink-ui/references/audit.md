@@ -31,6 +31,6 @@ MMD repo; start there before measuring anything again.
    Never toggle, pick, start, save or delete; cancel every sheet. Wireless-debugging ports
    change often; ask the owner for the current one.
 4. Personal content appears on screen. Record layout only, never content, and delete the
-   screenshots and `/sdcard/ui.xml` when done.
+   screenshots, `/sdcard/ui.xml` and the local `ui.xml` copy when done.
 5. Record findings as: screen, token, stock value, our value, verdict. Update `SKILL.md`
    when the stock apps show a better rule.

@@ -9,7 +9,13 @@ Electron-style app.
 
 - On the Kompakt, **1 CSS px = 1 dp** (`devicePixelRatio` is 1.333), so the stock numbers
   carry over: a 64 dp bar is `64px`, 21 sp row text is `21px`.
-- The viewport is 360 x 600 px under the 36 px status bar. Test at that size.
+- The screen is 360 x 600 px, and the app gets about **360 x 564 px** under the 36 px status
+  bar. Test at 360 x 564.
+- This holds only with a device-width viewport: the page needs
+  `<meta name="viewport" content="width=device-width, initial-scale=1">`, and a WebView you
+  control should not force a wide viewport (`setUseWideViewPort(true)` without that meta lays
+  out at 980 px). Check `window.innerWidth` is 360 on the phone before trusting a width-based
+  media query.
 - **Borders round down.** Chromium snaps border widths to whole device pixels and floors
   them, so `3px` (3.999 device px) draws as 3 device px (2.25 dp) and `2px` as 2 (1.5 dp).
   On the phone use **`3.1px`** for 3 dp rules and **`2.3px`** for 2 dp outlines, which land on
@@ -25,8 +31,10 @@ touch leaves the last hover painted on E Ink.
 ## Fonts
 
 - Android has no Lato and an app can't install fonts, so embed it: `@font-face` with base64
-  `src` (or files next to the CSS) under **your own family name** ("MMD Lato"). A system
-  font picker then sees a family that always exists; plain "Lato" shows as not installed.
+  `src` (or files next to the CSS) under **your own family name** ("MMD Lato"), and apply it
+  through the theme's own font variables. `@font-face` makes the family available to the
+  page only, not to the system: an app's font picker may report it as missing (Obsidian
+  shows plain "Lato" as not detected) even though the page renders with it.
 - Weights: 400, 700, 900 and their italics from MMD's `lato_*.ttf`, plus **500 from
   `lato_semi_bold.ttf`** for row and body text. Regular 400 reads visibly lighter than the
   stock apps on the panel. Subset to Latin with `pyftsubset` to keep the size down (MMD's
@@ -40,7 +48,7 @@ touch leaves the last hover painted on E Ink.
 | Rule | CSS |
 |---|---|
 | Black on white only | Every colour variable to `#000`/`#fff`, in light and dark themes alike; the one grey is `rgba(0,0,0,.3)` for placeholders and disabled glyphs |
-| No motion | `*, *::before, *::after { transition: none !important; animation-duration: 0s !important; animation-delay: 0s !important; }`, plus the app's own duration variables to 0. This also stops the caret blink and sliding drawers |
+| No motion | `*, *::before, *::after { transition: none !important; animation-duration: 0s !important; animation-delay: 0s !important; }`, plus the app's own duration variables to 0, which stops sliding drawers. The text caret's blink is separate: add `caret-animation: manual` (Chromium 139+; the Kompakt's WebView was 149 in November 2026). Older WebViews keep blinking; accept it or use `caret-color: transparent` only where a visible caret isn't needed |
 | Flat | `box-shadow: none`, no backdrop or scrim behind menus and modals |
 | Top bar | 64 px tall, 25 px weight 900 title, `border-bottom: 3.1px solid #000` on the phone; icons 24 to 28 px in 48 px targets |
 | Dashed divider | `background: linear-gradient(to right, #000 50%, transparent 50%) left bottom / 4px 1px repeat-x` on the row, which gives exact 2/2 dashes (`border-style: dashed` doesn't) |

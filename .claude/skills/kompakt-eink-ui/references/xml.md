@@ -187,8 +187,11 @@ transparent, `android:backgroundDimEnabled` false, `android:windowAnimationStyle
 a `bottomSheetStyle` whose `backgroundTint` is null, `android:background` is
 `bottom_dialog_bg`, `shapeAppearance` has 0 corners, and `elevation` is 0. Lay the sheet out
 as a centred TitleLarge title, then full-width `KompaktButton.Secondary` actions (12dp side
-margins, 16dp gaps) and a final `KompaktButton.Primary` "Cancel". Set the behaviour to
-`STATE_EXPANDED` and `skipCollapsed = true` so it opens in one step.
+margins, 16dp gaps) and a final `KompaktButton.Primary` "Cancel". Set `behavior.state = STATE_EXPANDED`
+in `onCreateDialog` (or `onStart`), before the sheet is first laid out, so it is placed
+expanded instead of settling there; changing the state after layout animates.
+`skipCollapsed = true` only makes hiding skip the collapsed state, so set both. With
+`android:windowAnimationStyle` @null on the dialog it then appears in one redraw.
 
 Switch (stock `kompakt_switch_selector`, used as a CheckBox's `android:button`): a 48 x 30dp
 vector pill. Off: white fill, 1.5dp black outline, black knob on the left. On: black fill,

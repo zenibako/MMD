@@ -291,9 +291,11 @@ Kinds of sheet, all with that frame:
 
 ## Review checklist
 
-Run this on every screen, then the grep list in the Compose or XML reference.
+Run this on every screen, then the grep list in the Compose, XML or web reference.
 
-Every "no" is a defect.
+Every "no" is a defect. Mark an item n/a when the screen has no such element (a settings
+screen has no create action), and keep the exceptions above (a Weather-style main screen
+may drop the bar's rule).
 
 - [ ] Only black and white, apart from a faint disabled glyph?
 - [ ] Lato with Black titles (25 sp in the bar) and Medium content (21 sp rows)?
