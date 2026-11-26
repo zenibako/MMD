@@ -566,17 +566,18 @@ fun ChatScreen(
         if (modelSheet) {
             KompaktSheet("Model", onDismiss = { modelSheet = false }) {
                 val c = catalog
+                // Always offered, so a chat can go back to the default even if the catalog fails.
+                ChoiceButton(
+                    "Profile default" + (c?.second?.let { " (${it.model})" } ?: ""),
+                    selected = model == null,
+                ) { chooseModel(null) }
                 when {
                     catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                     c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)
                     else -> Column(
-                        Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                        Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        ChoiceButton(
-                            "Profile default" + (c.second?.let { " (${it.model})" } ?: ""),
-                            selected = model == null,
-                        ) { chooseModel(null) }
                         c.first.forEach { m -> ChoiceButton(m.label, selected = m == model) { chooseModel(m) } }
                     }
                 }
