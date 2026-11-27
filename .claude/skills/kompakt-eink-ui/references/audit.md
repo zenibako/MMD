@@ -28,8 +28,8 @@ MMD repo; start there before measuring anything again.
    `dumpsys activity activities | grep mResumedActivity` before every tap. Open screens
    with `am start` or `monkey -p <pkg>` instead of tapping where possible. Never tap inside
    a Phone or Messages conversation or a call-log row (call and send buttons live there).
-   Never toggle, pick, start, save or delete; cancel every sheet. Wireless-debugging ports
-   change often; ask the owner for the current one.
+   Never toggle, pick, start, save or delete; cancel every sheet. To connect, and when the
+   wireless-debugging port has changed, follow the `kompakt-wireless-debugging` skill.
 4. Personal content appears on screen. Record layout only, never content, and delete the
    screenshots, `/sdcard/ui.xml` and the local `ui.xml` copy when done.
 5. Record findings as: screen, token, stock value, our value, verdict. Update `SKILL.md`

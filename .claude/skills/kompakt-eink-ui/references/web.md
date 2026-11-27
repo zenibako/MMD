@@ -54,6 +54,8 @@ touch leaves the last hover painted on E Ink.
 | Dashed divider | `background: linear-gradient(to right, #000 50%, transparent 50%) left bottom / 4px 1px repeat-x` on the row, which gives exact 2/2 dashes (`border-style: dashed` doesn't) |
 | Rows | 64 px settings rows, 21 px weight 500 labels, 18 px descriptions in black; section headers 21 px weight 900 |
 | Dense trees | A file tree may keep 48 px rows so more of it fits; say so in the theme's notes |
+| Reading text | Long-form text (notes, articles) at 20 px with a 28 px line height on the phone; check which variable the editor actually reads (Obsidian's editor ignores `--font-text-size` and follows `--font-preferred-size`) |
+| Floating headers | A header the app makes translucent or floats with an offset (Obsidian 1.15's phone note header) must be opaque white with its 3 dp rule, and the gap above it filled, or text shows through when scrolling up. Check with the status bar both shown and hidden |
 | Current item | Inverse (black fill, white text) or 3 dp outline, never a grey or tinted fill |
 | Bottom sheets | The app's phone menus become sheets: `border-top: 3.1px solid #000`, no radius; items are 48 px outlined buttons (2.3px, 12 px corners) with centred 21 px weight 900 labels and no icons; a centred 25 px weight 900 title; any Cancel filled black |
 | Buttons and fields | 48 px tall, 2.3px outline, 12 px corners (fields 10 px), 21 px text; the primary button filled black |
@@ -74,6 +76,23 @@ Seen on the phone in Obsidian; check for the same in any WebView app.
 - **Extra hairlines:** a `::before` 1 px line on rows doubles the dashed divider. Remove it
   so only the dashes show.
 - **Faint greys:** cap any remaining grey at the 30% faint (graph nodes, placeholders).
+
+### Motion CSS can't stop
+
+The global `transition: none` and `animation-duration: 0s` rules stop CSS motion only.
+Before saying an app is motion-free, check for the rest:
+
+- **Script animations:** `element.animate()` (Web Animations API) and `requestAnimationFrame`
+  loops that set `style.transform` frame by frame ignore the CSS rules. Drawers and sidebars
+  that follow a finger are usually done this way. While the motion runs, look at
+  `document.getAnimations()` and sample the element's inline `transform` to tell which.
+  Only the app's code or a small plugin can stop them (for example by finishing each
+  `Animation` as it starts); a theme can't.
+- **Scroll momentum:** a fling keeps gliding after the finger lifts. That is the WebView's
+  own scrolling. A theme can't page it; a plugin can add ▲/▼ paging.
+- **Android's own transitions** between apps and screens follow Developer options'
+  window, transition and animator scales. Setting them to 0 affects every app, so it is
+  the owner's choice, not a theme fix.
 
 ## Working on the phone
 

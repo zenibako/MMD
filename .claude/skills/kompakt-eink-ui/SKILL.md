@@ -174,6 +174,15 @@ next to the stock apps.
   on by default and saved. The ⋮ entry reads "Filter (some hidden)" while any are off, so a
   short list is never a mystery.
 - Untitled items get a placeholder title ("New chat"), never a blank row.
+- Dates and times are day-relative and change only when the date does: the time for
+  today, "Yesterday", the weekday within the last 6 days, then "23 Nov" (with the year
+  when it isn't this year). Never "5 min ago": a ticking label redraws the panel for
+  nothing. Take the day words from the system (`DateUtils`), follow the phone's locale and
+  12/24-hour setting, and refresh today's date on resume and on a date, time or time-zone
+  change, with no timer. Messages inside a conversation show the time only, under day markers.
+- Metadata on a row goes on one 18 sp line joined with " · " ("Nov 26, 2026 · 5 min").
+  Give the title the ellipsis, not the metadata, and leave a value out rather than show a
+  placeholder when it isn't known yet.
 - Empty state: a centred line illustration, a 25 sp Black headline, a 21 sp Medium body,
   and one outlined 48 dp button ("Create new note").
 
@@ -252,6 +261,11 @@ Kinds of sheet, all with that frame:
 - Single choice: a sub-screen of 62 dp radio rows, 26 dp radio at 16 dp, label at about
   61 dp, dashed dividers from the label. Picking applies at once.
 - Dashed divider under every row.
+- Split a look into separate settings rather than offering bundled styles: one choice
+  for the main thing (a radio sub-screen or choice sheet) plus switches for the
+  independent parts (Twofold: Marks, then Rounded corners and Dark board). Previews in
+  the choice follow the switches. When replacing a bundled setting, map the saved old
+  value onto the new ones.
 
 ### Buttons and fields
 
@@ -266,6 +280,20 @@ Kinds of sheet, all with that frame:
 - Horizontal content (hourly forecast, days): ◀ ▶ arrows at the ends, the unavailable one
   faint. Calendar shows a column of small rounded pills as a page indicator.
 - Numeric choice (durations): ◀ value ▶ inside a 3 dp outlined circle.
+- Small adjustments (text scale): outlined − and + buttons (2 dp, 48 dp targets) either
+  side of the current value, in a toggle-style sheet that applies each step at once and
+  closes with Done. Never borderless glyphs, and the unavailable end goes faint.
+
+### Showing levels without grey
+
+The panel has few grey levels and ghosts, so grey fills don't tell values apart.
+
+- Tell levels apart with marks: weight of outline, frames, dots or steps (Twofold adds a
+  white dot per doubling to its solid tiles), and wrap marks onto a second row rather than
+  let them run past the shape.
+- Empty slots are a 1 dp dashed outline, not a grey fill.
+- Inverse (black fill, white text or marks) is the strongest level; keep it for the
+  highest or current one.
 
 ### Full-screen urgent alert
 
@@ -313,6 +341,8 @@ may drop the bar's rule).
 - [ ] Failures are one plain line, with Retry where retrying helps?
 - [ ] Buttons 48 dp tall with 12 dp corners; switch 48 x 30; radio 26; checkbox 20?
 - [ ] Long lists use ▲/▼ with the pill scrollbar?
+- [ ] Dates day-relative and never "minutes ago"; metadata on one " · " line?
+- [ ] Levels and empty slots told apart by marks and dashes, not grey fills?
 - [ ] Secondary tasks open as sub-screens with a back arrow, and system back works?
 - [ ] No auto-refresh; an explicit Refresh where data is remote?
 - [ ] Fits 360 dp wide; nothing hidden under the 36 dp status bar?
