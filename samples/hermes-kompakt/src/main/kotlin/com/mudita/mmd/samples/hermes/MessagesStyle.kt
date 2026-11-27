@@ -67,6 +67,10 @@ fun MessagesTopBar(
     onBack: (() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     titleClickLabel: String? = null,
+    // Makes the label line (and the title under it, for a 48 dp target) open a setting, such
+    // as a chat's model; the label then ends with a small ▾ and the title has none.
+    onLabelClick: (() -> Unit)? = null,
+    labelClickLabel: String? = null,
     // Drawn in the title's box, so a dropdown opened from the title is anchored under it.
     titleMenu: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
@@ -89,17 +93,28 @@ fun MessagesTopBar(
                     Modifier
                         .fillMaxWidth()
                         .then(
-                            if (onTitleClick != null) {
-                                Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick)
-                            } else {
-                                Modifier
+                            when {
+                                onTitleClick != null -> Modifier.clickable(onClickLabel = titleClickLabel, onClick = onTitleClick)
+                                onLabelClick != null -> Modifier.clickable(onClickLabel = labelClickLabel, onClick = onLabelClick)
+                                else -> Modifier
                             },
                         )
                         .heightIn(min = 48.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     if (label.isNotBlank()) {
-                        TextMMD(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextMMD(
+                                label,
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (onLabelClick != null && onTitleClick == null) {
+                                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                            }
+                        }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextMMD(

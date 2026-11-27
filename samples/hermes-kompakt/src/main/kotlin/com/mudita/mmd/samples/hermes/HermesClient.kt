@@ -47,13 +47,16 @@ data class ChatMessage(
     val label: String = "",
     /** For [MessageKind.TOOL_CALL]: the tools called. */
     val tools: List<String> = emptyList(),
+    /** A quiet note under a reply, e.g. "Answered by granite-4" after a fallback. */
+    val footer: String? = null,
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
 sealed interface ChatEvent {
     data class Delta(val text: String) : ChatEvent
     data class Tool(val name: String, val phase: String, val detail: String = "") : ChatEvent
-    data class Done(val finalText: String?) : ChatEvent
+    /** [servedModel]: the model that actually answered (the run's runtime), if Hermes said. */
+    data class Done(val finalText: String?, val servedModel: String? = null) : ChatEvent
     data class Failed(val reason: String) : ChatEvent
 }
 
@@ -213,8 +216,8 @@ class HermesClient(
 
     /**
      * Sends [input] to the session and streams the reply. On E Ink we deliberately do not
-     * redraw per token: callers should collect into a buffer and render on [ChatEvent.Done]
-     * (or at a slow, fixed cadence).
+     * redraw per token: callers should collect into a buffer and render whole paragraphs
+     * (see [completedParagraphs]) and the final text on [ChatEvent.Done].
      */
     fun chatStream(sessionId: String, input: String): Flow<ChatEvent> = flow {
         val conn = open("POST", "/api/sessions/${enc(sessionId)}/chat/stream")
@@ -250,6 +253,7 @@ class HermesClient(
                     throw HermesApiException(code, detail)
                 }
                 val text = StringBuilder()
+                var completed = ""
                 conn.inputStream.bufferedReader().use { reader ->
                     for (e in reader.sseEvents()) {
                         // Event names only: payloads carry conversation text.
@@ -271,17 +275,26 @@ class HermesClient(
                                     detail = data.str("message", "status", "summary", "label"),
                                 ),
                             )
+                            // The whole reply (or, for a failed turn, Hermes's account of the failure).
+                            "assistant.completed" -> completed = data.str("content", "text")
                             "run.completed" -> {
-                                val final = data.str("output", "final", "text", "content").ifBlank { text.toString() }
-                                emit(ChatEvent.Done(final))
+                                val final = data.str("output", "final", "text", "content")
+                                    .ifBlank { completed }.ifBlank { text.toString() }
+                                val served = data.optJSONObject("runtime")?.str("model")?.ifBlank { null }
+                                emit(ChatEvent.Done(final, served))
                                 return@use
                             }
-                            "run.failed", "run.cancelled", "run.interrupted" -> {
+                            "run.failed", "run.cancelled", "run.interrupted", "error" -> {
                                 Log.w("Hermes", "Run ended with ${e.event}")
                                 val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
                                     ?.str("message", "detail", "type")
                                     ?: data.str("error", "message", "reason", "detail")
-                                emit(ChatEvent.Failed(reason.ifBlank { "${e.event} ${e.data.take(300)}" }))
+                                emit(
+                                    ChatEvent.Failed(
+                                        reason.ifBlank { completed }.ifBlank { data.str("turn_exit_reason") }
+                                            .ifBlank { e.event.substringAfter('.') },
+                                    ),
+                                )
                                 return@use
                             }
                         }

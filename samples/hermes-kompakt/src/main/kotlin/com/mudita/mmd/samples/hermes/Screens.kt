@@ -397,22 +397,52 @@ fun ChatScreen(
         }
     }
 
-    fun send() {
-        val text = draft.trim()
-        if (text.isEmpty() || !historyLoaded || sending) return
-        // Close the keyboard so the reply has the whole screen.
-        keyboard?.hide()
-        focusManager.clearFocus()
-        draft = ""
-        messages.add(ChatMessage("user", text, System.currentTimeMillis()))
+    var modelSheet by remember { mutableStateOf(false) }
+    // The choices and the profile's default, loaded on open so the header can name the model a
+    // chat inherits, and again from the model sheet if that first load failed.
+    var catalog by remember { mutableStateOf<Pair<List<ModelChoice>, ModelChoice?>?>(null) }
+    var catalogError by remember { mutableStateOf<String?>(null) }
+    var catalogLoading by remember { mutableStateOf(false) }
+
+    fun loadCatalog() {
+        if (catalog != null || catalogLoading) return
+        catalogLoading = true
+        catalogError = null
+        scope.launch {
+            runCatching { client.modelOptions() }
+                .onSuccess { (providers, default) -> catalog = modelChoices(providers) to default }
+                .onFailure { if (it !is CancellationException) catalogError = connectionError("Couldn't load models", it) }
+            catalogLoading = false
+        }
+    }
+    LaunchedEffect(Unit) { loadCatalog() }
+
+    fun openModelSheet() {
+        modelSheet = true
+        loadCatalog()
+    }
+
+    // A failed turn: the message that failed and one readable line about why, shown under it.
+    var failure by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // The reply so far while it streams, in whole paragraphs only (see completedParagraphs).
+    var live by remember { mutableStateOf<String?>(null) }
+
+    // Runs one turn for [text], already shown as your message.
+    fun runTurn(text: String) {
+        failure = null
+        live = null
         // You just sent it: show it, even if you had scrolled up.
         followBottom = true
+        // Static: no dots or spinner, which would redraw the E Ink screen.
         working = "Thinking…"
         sending = true
+        // The model this chat should answer with, to notice a fallback.
+        val expected = model?.model ?: catalog?.second?.model
         scope.launch {
             try {
                 // Tools this turn used, for the "Used …" line placed before the reply.
                 val usedTools = mutableListOf<String>()
+                val buffer = StringBuilder()
                 runCatching {
                     client.chatStream(sessionId, text).collect { e ->
                         when (e) {
@@ -421,24 +451,46 @@ fun ChatScreen(
                                 working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
                                 usedTools += e.name
                             }
+                            // Redraw only when a paragraph completes.
+                            is ChatEvent.Delta -> {
+                                buffer.append(e.text)
+                                val ready = completedParagraphs(buffer.toString())
+                                if (ready.length > (live?.length ?: 0)) {
+                                    live = ready
+                                    working = null
+                                }
+                            }
                             is ChatEvent.Done -> {
                                 toolCallEntry(usedTools, System.currentTimeMillis())?.let { messages.add(it) }
-                                e.finalText?.let { messages.add(ChatMessage("assistant", it, System.currentTimeMillis())) }
+                                e.finalText?.takeIf { it.isNotBlank() }?.let {
+                                    messages.add(
+                                        ChatMessage(
+                                            "assistant",
+                                            it,
+                                            System.currentTimeMillis(),
+                                            footer = answeredByLabel(e.servedModel, expected),
+                                        ),
+                                    )
+                                }
+                                live = null
                                 working = null
                                 if (shownTitle.isBlank()) refreshTitle()
                             }
-                            is ChatEvent.Failed -> working = model?.let { m ->
-                                // A model the server can't route or the provider refuses fails the run.
-                                "Run failed on ${m.model}: ${e.reason} Pick another model in ⋮."
-                            } ?: "Run failed: ${e.reason}"
-                            is ChatEvent.Delta -> Unit
+                            is ChatEvent.Failed -> {
+                                live = null
+                                working = null
+                                failure = text to runFailureLine(e.reason)
+                            }
                         }
                     }
                 }.onFailure {
-                    working = if ((it as? HermesApiException)?.code == 409) {
-                        "This session belongs to another surface. Use Continue here."
+                    if (it is CancellationException) throw it
+                    live = null
+                    if ((it as? HermesApiException)?.code == 409) {
+                        working = "This session belongs to another surface. Use Continue here."
                     } else {
-                        "Send failed: ${it.message}"
+                        working = null
+                        failure = text to connectionError("Couldn't send", it)
                     }
                 }
             } finally {
@@ -447,23 +499,25 @@ fun ChatScreen(
         }
     }
 
+    fun send() {
+        val text = draft.trim()
+        if (text.isEmpty() || !historyLoaded || sending) return
+        // Close the keyboard so the reply has the whole screen.
+        keyboard?.hide()
+        focusManager.clearFocus()
+        draft = ""
+        messages.add(ChatMessage("user", text, System.currentTimeMillis()))
+        runTurn(text)
+    }
+
+    // Sends the failed message again to this session; your message stays where it is.
+    fun retry() {
+        val text = failure?.first ?: return
+        if (!sending) runTurn(text)
+    }
+
     var showTools by remember { mutableStateOf(SettingsStore.showToolMessages(context)) }
     var chatSheet by remember { mutableStateOf(false) }
-    var modelSheet by remember { mutableStateOf(false) }
-    // Loaded when the model sheet opens: the choices and the profile's default.
-    var catalog by remember { mutableStateOf<Pair<List<ModelChoice>, ModelChoice?>?>(null) }
-    var catalogError by remember { mutableStateOf<String?>(null) }
-
-    fun openModelSheet() {
-        modelSheet = true
-        if (catalog != null) return
-        catalogError = null
-        scope.launch {
-            runCatching { client.modelOptions() }
-                .onSuccess { (providers, default) -> catalog = modelChoices(providers) to default }
-                .onFailure { catalogError = connectionError("Couldn't load models", it) }
-        }
-    }
 
     var modelSaving by remember { mutableStateOf(false) }
     var lockError by remember { mutableStateOf<String?>(null) }
@@ -503,22 +557,28 @@ fun ChatScreen(
             if (!scrolling) followBottom = !listState.canScrollForward
         }
     }
-    LaunchedEffect(shown.size, showTools, historyLoaded) {
-        if (shown.isNotEmpty() && followBottom && !listState.isScrollInProgress) {
+    // The list's rows: the messages, then the reply streaming in, then a failure line.
+    val rowCount = shown.size + (if (live != null) 1 else 0) + (if (failure != null) 1 else 0)
+    LaunchedEffect(rowCount, live?.length, showTools, historyLoaded) {
+        if (rowCount > 0 && followBottom && !listState.isScrollInProgress) {
             // Never move the list under the reader's finger: a reply that lands mid-scroll
             // waits. The offset is clamped, so this shows the end of the last item, not just its top.
-            listState.scrollToItem(shown.size - 1, scrollOffset = Int.MAX_VALUE)
+            listState.scrollToItem(rowCount - 1, scrollOffset = Int.MAX_VALUE)
         }
     }
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // Like a Messages thread: who you're talking to (the profile) above the conversation.
+        // The profile and the model this chat answers with (picked, or the profile's default
+        // once known) in the small line above the title; tapping it opens the Model sheet.
+        val shownModel = model?.model ?: catalog?.second?.model
         MessagesTopBar(
-            // The model shows only when this chat overrides the profile's default.
-            label = model?.let { "$profileName · ${it.model}" } ?: profileName,
+            label = listOfNotNull(profileName, shownModel).joinToString(" · "),
             title = sessionTitleOrPlaceholder(shownTitle),
             onBack = onBack,
+            onLabelClick = if (readOnly) null else ({ openModelSheet() }),
+            labelClickLabel = "Change model",
         ) {
             BarIcon(Icons.Filled.MoreVert, "More") { chatSheet = true }
         }
@@ -545,7 +605,8 @@ fun ChatScreen(
                         MessageBubble(
                             m.text,
                             mine = m.role == "user",
-                            time = m.time?.let { timeOfDayLabel(it, zone, locale, use24h) },
+                            time = listOfNotNull(m.time?.let { timeOfDayLabel(it, zone, locale, use24h) }, m.footer)
+                                .joinToString(" · "),
                             // Same author next, on the same day: group the two 2 dp apart.
                             sameAuthorAsNext = shown.getOrNull(i + 1)?.let { n ->
                                 n.kind == MessageKind.CONVERSATION && n.role == m.role &&
@@ -555,6 +616,10 @@ fun ChatScreen(
                     m.kind == MessageKind.TOOL_CALL && !showTools -> ToolSummaryLine(m.text)
                     else -> EventLine(m.label, m.text)
                 }
+            }
+            live?.let { text -> item(key = "live") { MessageBubble(text, mine = false, time = null) } }
+            failure?.let { (_, line) ->
+                item(key = "failure") { FailureLine(line, retryEnabled = !sending) { retry() } }
             }
         }
         (forkStatus ?: working)?.let {
@@ -622,13 +687,13 @@ fun ChatScreen(
                 val c = catalog
                 // Always offered, so a chat can go back to the default even if the catalog fails.
                 ChoiceButton(
-                    "Profile default" + (c?.second?.let { " (${it.model})" } ?: ""),
-                    selected = model == null,
+                    "Profile default" + (c?.second?.let { " · ${it.model}" } ?: ""),
+                    selected = isCurrentChoice(null, model),
                 ) { chooseModel(null) }
                 lockError?.let { TextMMD(it, style = MaterialTheme.typography.bodyLarge) }
                 if (modelSaving) TextMMD("Saving…", style = MaterialTheme.typography.bodyLarge)
                 when {
-                    catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                    c == null && catalogError != null -> TextMMD(catalogError.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                     c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)
                     // The stock paged list: ▲/▼ and the pill scrollbar appear when it overflows.
                     // Sized to its rows up to a cap, since the list fills whatever height it gets.
@@ -638,13 +703,36 @@ fun ChatScreen(
                     ) {
                         items(c.first) { m ->
                             Box(Modifier.padding(end = 4.dp)) {
-                                ChoiceButton(m.label, selected = m == model) { chooseModel(m) }
+                                ChoiceButton(m.label, selected = isCurrentChoice(m, model)) { chooseModel(m) }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Under a message whose run failed: one plain line saying why, and an outlined Retry that sends
+ * the same message again. Aligned with your messages, at the right.
+ */
+@Composable
+private fun FailureLine(line: String, retryEnabled: Boolean, onRetry: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextMMD(
+            line,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.End,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        OutlinedSquareButton(Icons.Outlined.Refresh, "Retry", enabled = retryEnabled, onClick = onRetry)
     }
 }
 

@@ -39,9 +39,20 @@ fun modelChoices(providers: List<ProviderModels>): List<ModelChoice> =
  * The model to lock a session to for a pick: the chosen model, or for "Profile default"
  * ([choice] null) the profile's default model. Hermes has no way to clear a session's lock, so
  * going back to the default means locking to it. Null if the default isn't known.
+ *
+ * TODO: once Hermes offers `DELETE /api/sessions/{id}/model`, "Profile default" should clear the
+ * lock instead, so the chat follows later changes to the profile's default.
  */
 fun lockTarget(choice: ModelChoice?, profileDefault: ModelChoice?): ModelChoice? = choice ?: profileDefault
 
 /** Settings key for a session's chosen model, scoped to server, profile and session. */
 fun sessionModelKey(baseUrl: String, profileSlug: String, sessionId: String): String =
     "model|${normalizeUrl(baseUrl)}|$profileSlug|$sessionId"
+
+/**
+ * Whether a row of the model sheet carries the check: the row the current choice came from.
+ * [row] null is the "Profile default" row; [pinned] null means the chat inherits the default.
+ * A pinned model keeps its check even when it is the same model as the default, so a pinned
+ * Granite and an inherited Granite stay distinguishable.
+ */
+fun isCurrentChoice(row: ModelChoice?, pinned: ModelChoice?): Boolean = row == pinned
