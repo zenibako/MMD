@@ -187,7 +187,12 @@ transparent, `android:backgroundDimEnabled` false, `android:windowAnimationStyle
 a `bottomSheetStyle` whose `backgroundTint` is null, `android:background` is
 `bottom_dialog_bg`, `shapeAppearance` has 0 corners, and `elevation` is 0. Lay the sheet out
 as a centred TitleLarge title, then full-width `KompaktButton.Secondary` actions (12dp side
-margins, 16dp gaps) and a final `KompaktButton.Primary` "Cancel". Set `behavior.state = STATE_EXPANDED`
+margins, 16dp gaps) and a final `KompaktButton.Primary` "Cancel". Keep the title and Cancel
+fixed and put the actions in a `NestedScrollView` between them (height `0dp` with weight 1 in
+a vertical `LinearLayout`, or `wrap_content` capped at the space left), so large text or many
+actions scroll instead of pushing Cancel off screen; the Compose `KompaktSheet` does the same.
+Set `behavior.isDraggable = false` so a downward drag can't move and settle the sheet; Cancel,
+Back and a tap outside still close it. Set `behavior.state = STATE_EXPANDED`
 in `onCreateDialog` (or `onStart`), before the sheet is first laid out, so it is placed
 expanded instead of settling there; changing the state after layout animates.
 `skipCollapsed = true` only makes hiding skip the collapsed state, so set both. With

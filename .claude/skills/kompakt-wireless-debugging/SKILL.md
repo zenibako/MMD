@@ -38,8 +38,17 @@ ln -sf "$PWD/.claude/skills/kompakt-wireless-debugging/scripts/kompakt-adb" ~/.l
 ### Fixed port 5555
 
 Wireless debugging picks a new random port whenever it's turned on, after a reboot, and
-sometimes after the phone sleeps or changes network. Pin it to 5555 so nobody has to ask
-for the port again:
+sometimes after the phone sleeps or changes network. Port 5555 avoids asking for the port
+again, but it is a different listener: `adb tcpip 5555` turns on legacy adb over TCP,
+which has **no TLS and no pairing**. Anyone who can reach the phone on 5555 can get a shell
+once the phone has trusted their key, and the traffic can be read on the way.
+
+- Use 5555 only over an encrypted, private path: Tailscale (WireGuard) to the phone's
+  tailnet address, or a trusted home network you control. Never on public or shared Wi-Fi.
+- Otherwise stay on the TLS Wireless debugging port and look the port up each time.
+- Turning Wireless debugging off, or a reboot, closes 5555 again.
+
+To pin it:
 
 ```sh
 kompakt-adb --persist "$KOMPAKT_HOST:<port from the Wireless debugging screen>"
@@ -121,7 +130,7 @@ Several sessions and the owner use the same phone, often at the same time.
 - Screens show personal content. Record layout, not content, and delete screenshots when
   the task is done.
 - Android's animation scales (Developer options) change every app. Ask before setting them:
-  `adb shell settings put global window_animation_scale 0` (and
-  `transition_animation_scale`, `animator_duration_scale`).
+  `adb -s "$S" shell settings put global window_animation_scale 0`, and the same for
+  `transition_animation_scale` and `animator_duration_scale`.
 
 For UI rules and auditing against the stock apps, see the `kompakt-eink-ui` skill.

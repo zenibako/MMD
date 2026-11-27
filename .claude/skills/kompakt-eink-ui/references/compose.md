@@ -662,20 +662,37 @@ then `KompaktBottomBar { MessageField(…, Modifier.weight(1f)); OutlinedIconBut
   ```kotlin
   val listState = rememberLazyListState()
   var followBottom by remember { mutableStateOf(true) }
-  // Decide only once a scroll settles: following resumes if the reader ended at the bottom.
-  LaunchedEffect(listState) {
-      snapshotFlow { listState.isScrollInProgress }.collect { if (!it) followBottom = !listState.canScrollForward }
-  }
-  LaunchedEffect(items.size) {
-      // Never move the list under the reader's finger. The offset is clamped, so this shows
-      // the end of a long last item, not just its top.
-      if (items.isNotEmpty() && followBottom && !listState.isScrollInProgress) {
-          listState.scrollToItem(items.size - 1, scrollOffset = Int.MAX_VALUE)
+  // LazyColumnMMD scrolls by one scrollBy per drag delta, so isScrollInProgress can be false
+  // mid-drag. Watch the finger itself (Initial pass, nothing consumed) to know the list is held.
+  var touching by remember { mutableStateOf(false) }
+  val holdWatcher = Modifier.pointerInput(Unit) {
+      awaitEachGesture {
+          awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+          touching = true
+          do { val event = awaitPointerEvent(PointerEventPass.Initial) } while (event.changes.any { it.pressed })
+          touching = false
       }
   }
+  val count by rememberUpdatedState(items.size)
+  LaunchedEffect(listState) {
+      var wasHeld = false
+      // One collector, so "a scroll just ended" is decided before any follow: new items and a
+      // smaller viewport (the keyboard opening) follow the end only while the reader is there.
+      snapshotFlow { Triple(count, listState.layoutInfo.viewportSize, touching || listState.isScrollInProgress) }
+          .collect { (n, _, held) ->
+              when {
+                  held -> Unit                                              // never move under a finger
+                  wasHeld -> followBottom = !listState.canScrollForward     // settled: at the end?
+                  n > 0 && followBottom -> listState.scrollToItem(n - 1, scrollOffset = Int.MAX_VALUE)
+              }
+              wasHeld = held
+          }
+  }
+  // LazyColumnMMD(Modifier.weight(1f).then(holdWatcher), state = listState, scrollStep = 0, …)
   ```
-  A reply that lands during a scroll waits; the reader reaches it by scrolling to the end.
-  Sending sets `followBottom = true`.
+  The offset is clamped, so this shows the end of a long last item, not just its top. A
+  reply that lands while the reader holds or scrolls the list waits; they reach it by
+  scrolling to the end. Sending sets `followBottom = true`.
 - Agent or system activity: an `ActivityLine("Used web_search, read_file")` between bubbles.
   Full tool calls and system entries stay hidden behind a ⋮ > `SheetToggle("Show tool and
   system messages")`; when shown, each is an 18 sp Black label over up to four 18 sp lines,

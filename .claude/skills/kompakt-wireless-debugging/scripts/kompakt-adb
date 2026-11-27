@@ -27,7 +27,13 @@ serialno() { adb -s "$1" shell getprop ro.serialno 2>/dev/null | tr -d '\r'; }
 
 try() {
     out=$(adb connect "$1" 2>&1)
-    case "$out" in *"connected to"*) ;; *) return 1 ;; esac
+    # created=1 only when this call opened the transport; "already connected" belongs to
+    # someone else (another session may be using it), so it must never be disconnected here.
+    case "$out" in
+        *"already connected to"*) created=0 ;;
+        *"connected to"*) created=1 ;;
+        *) return 1 ;;
+    esac
     [ "$(adb -s "$1" get-state 2>/dev/null)" = "device" ] || return 1
     serial="$1"
 }
@@ -42,7 +48,7 @@ if [ -z "$serial" ] && [ -n "$known" ]; then
     for addr in $(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/ {print $NF}'); do
         if try "$addr"; then
             [ "$(serialno "$addr")" = "$known" ] && break
-            adb disconnect "$addr" >/dev/null 2>&1
+            [ "$created" = 1 ] && adb disconnect "$addr" >/dev/null 2>&1
             serial=""
         fi
     done
@@ -61,6 +67,8 @@ if [ "$persist" = 1 ] && [ "${serial##*:}" != "5555" ]; then
     old="$serial"
     serial=""
     adb disconnect "$old" >/dev/null 2>&1
-    try "$ip:5555" || { echo "Switched to port 5555 but couldn't reconnect yet; run again without --persist." >&2; exit 1; }
+    # Reconnect the way that worked first (it may be the LAN address mDNS found), then the
+    # configured addresses.
+    try "${old%:*}:5555" || try "$ip:5555" || { [ -n "$lan" ] && try "$lan:5555"; } || { echo "Switched to port 5555 but couldn't reconnect yet; run again without --persist." >&2; exit 1; }
 fi
 echo "$serial"
