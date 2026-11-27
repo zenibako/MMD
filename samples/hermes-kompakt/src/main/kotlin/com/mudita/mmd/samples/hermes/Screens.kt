@@ -697,8 +697,10 @@ fun ChatScreen(
                     c == null -> TextMMD("Loading…", style = MaterialTheme.typography.bodyLarge)
                     // The stock paged list: ▲/▼ and the pill scrollbar appear when it overflows.
                     // Sized to its rows up to a cap, since the list fills whatever height it gets.
+                    // The cap (about three and a half two-line rows) keeps the whole sheet below
+                    // the chat header, so the model line you tapped stays in view.
                     else -> LazyColumnMMD(
-                        Modifier.fillMaxWidth().height((c.first.size * 56).coerceIn(56, 320).dp),
+                        Modifier.fillMaxWidth().height((c.first.size * 56).coerceIn(56, 232).dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(c.first) { m ->
