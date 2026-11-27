@@ -2,6 +2,12 @@ package com.mudita.mmd.samples.twofold
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import com.mudita.mmd.components.switcher.SwitchMMD
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -60,8 +66,8 @@ fun GameScreen(
     state: GameState,
     /** Applies a change to the latest game state, so quick inputs never act on a stale board. */
     onUpdate: ((GameState) -> GameState) -> Unit,
-    tileStyle: TileStyle,
-    onTileStyleChange: (TileStyle) -> Unit,
+    tileLook: TileLook,
+    onTileLookChange: (TileLook) -> Unit,
 ) {
     var pickingStyle by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -70,7 +76,7 @@ fun GameScreen(
 
     if (pickingStyle) {
         BackHandler { pickingStyle = false }
-        StyleScreen(selected = tileStyle, onSelect = onTileStyleChange, onBack = { pickingStyle = false })
+        TilesScreen(look = tileLook, onChange = onTileLookChange, onBack = { pickingStyle = false })
         return
     }
 
@@ -102,7 +108,7 @@ fun GameScreen(
                     TextMMD("Best ${state.best}", style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                 }
                 Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                    Board(state, tileStyle)
+                    Board(state, tileLook)
                     when {
                         state.hasWon -> Overlay(
                             title = "You made $GOAL_TILE",
@@ -129,7 +135,7 @@ fun GameScreen(
                     menuOpen = false
                     onUpdate { it.restart() }
                 }
-                SheetButton("Tile style") {
+                SheetButton("Tiles") {
                     menuOpen = false
                     pickingStyle = true
                 }
@@ -139,11 +145,12 @@ fun GameScreen(
 }
 
 @Composable
-private fun Board(state: GameState, style: TileStyle) {
+private fun Board(state: GameState, look: TileLook) {
     val size = state.grid.size
     Column(
         Modifier
             .fillMaxSize()
+            .background(look.bg)
             .border(3.dp, Ink)
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -151,7 +158,7 @@ private fun Board(state: GameState, style: TileStyle) {
         for (row in 0 until size) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for (col in 0 until size) {
-                    StyledTile(state.grid[row][col], style, Modifier.weight(1f).fillMaxSize())
+                    StyledTile(state.grid[row][col], look, Modifier.weight(1f).fillMaxSize())
                 }
             }
         }
@@ -189,48 +196,83 @@ private fun Overlay(
 }
 
 /**
- * Tile style choice as its own screen: a back arrow in the top bar (and the system back
- * gesture) returns to the game. Picking a style applies it at once.
+ * Tile settings as their own screen, laid out like stock Settings: a back arrow (and the
+ * system back gesture) returns to the game, and every change applies at once.
  */
 @Composable
-private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBack: () -> Unit) {
+private fun TilesScreen(look: TileLook, onChange: (TileLook) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        KompaktTopBar(title = "Tile style", onBack = onBack)
-        TileStyle.entries.forEach { style ->
-            // Radio rows as in stock Settings: radio at 16 dp, label at about 61 dp, a dashed
-            // divider from the label.
-            Row(
-                Modifier
-                    .height(StyleRowHeight)
-                    .fillMaxWidth()
-                    .selectable(selected = style == selected, onClick = { onSelect(style) })
-                    .padding(start = Kompakt.TextInset, end = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.width(StyleLabelInset - Kompakt.TextInset)) {
-                    RadioButtonMMD(selected = style == selected, onClick = null)
-                }
-                Column(Modifier.weight(1f)) {
-                    TextMMD(style.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                    TextMMD(style.description, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.width(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    listOf(2, 256, 2048).forEach {
-                        StyledTile(it, style, Modifier.size(34.dp), scale = 0.42f)
+        KompaktTopBar(title = "Tiles", onBack = onBack)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            SectionHeader("Marks")
+            TileMarks.entries.forEach { marks ->
+                // Radio rows as in stock Settings: radio at 16 dp, label at about 61 dp, a dashed
+                // divider from the label. Previews show the marks with the current corners and board.
+                Row(
+                    Modifier
+                        .height(SettingsRowHeight)
+                        .fillMaxWidth()
+                        .selectable(selected = marks == look.marks, onClick = { onChange(look.copy(marks = marks)) })
+                        .padding(start = Kompakt.TextInset, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(StyleLabelInset - Kompakt.TextInset)) {
+                        RadioButtonMMD(selected = marks == look.marks, onClick = null)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        TextMMD(marks.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        TextMMD(marks.description, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Row(
+                        Modifier.background(look.bg).padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        listOf(2, 256, 2048).forEach {
+                            StyledTile(it, look.copy(marks = marks), Modifier.size(34.dp), scale = 0.42f)
+                        }
                     }
                 }
+                DashedRowDivider(start = StyleLabelInset)
             }
-            DashedRowDivider(start = StyleLabelInset)
+            SectionHeader("Look")
+            SwitchRow("Rounded corners", look.rounded) { onChange(look.copy(rounded = it)) }
+            SwitchRow("Dark board", look.dark) { onChange(look.copy(dark = it)) }
         }
     }
+}
+
+/** Settings section header: 21 sp Black at the text inset, with a dashed divider below. */
+@Composable
+private fun SectionHeader(text: String) {
+    Box(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = Kompakt.TextInset), contentAlignment = Alignment.CenterStart) {
+        TextMMD(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black, maxLines = 1)
+    }
+    DashedRowDivider(start = Kompakt.TextInset)
+}
+
+/** Settings switch row: label at the text inset, MMD's pill switch at the right; the whole row toggles. */
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .height(SettingsRowHeight)
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = Kompakt.TextInset),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextMMD(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+        SwitchMMD(checked = checked, onCheckedChange = null)
+    }
+    DashedRowDivider(start = Kompakt.TextInset)
 }
 
 /** Where radio-row labels start, as in the stock Settings radio screens. */
 private val StyleLabelInset = 61.dp
 
-/** Two-line radio rows: label and description, with room for the tile previews. */
-private val StyleRowHeight = 72.dp
+/** Stock Settings row height: one line, or two short lines. */
+private val SettingsRowHeight = 64.dp
 
 /**
  * On-screen arrows for people who prefer tapping to swiping: the skill's outlined icon button
