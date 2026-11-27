@@ -1,4 +1,4 @@
-package com.mudita.mmd.samples.twofold
+package com.mudita.mmd.samples.game2048k
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -49,13 +49,13 @@ import androidx.compose.ui.unit.dp
 import com.mudita.mmd.R as MmdR
 import com.mudita.mmd.components.radio_button.RadioButtonMMD
 import com.mudita.mmd.components.text.TextMMD
-import com.mudita.mmd.samples.twofold.game.Direction
-import com.mudita.mmd.samples.twofold.game.GOAL_TILE
-import com.mudita.mmd.samples.twofold.game.GameState
-import com.mudita.mmd.samples.twofold.game.continuePastGoal
-import com.mudita.mmd.samples.twofold.game.move
-import com.mudita.mmd.samples.twofold.game.restart
-import com.mudita.mmd.samples.twofold.game.undo
+import com.mudita.mmd.samples.game2048k.game.Direction
+import com.mudita.mmd.samples.game2048k.game.GOAL_TILE
+import com.mudita.mmd.samples.game2048k.game.GameState
+import com.mudita.mmd.samples.game2048k.game.continuePastGoal
+import com.mudita.mmd.samples.game2048k.game.move
+import com.mudita.mmd.samples.game2048k.game.restart
+import com.mudita.mmd.samples.game2048k.game.undo
 import kotlin.math.abs
 
 /** Minimum swipe length before a drag counts as a move. */

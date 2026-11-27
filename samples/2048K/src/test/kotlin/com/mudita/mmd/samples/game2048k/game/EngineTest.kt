@@ -1,4 +1,4 @@
-package com.mudita.mmd.samples.twofold.game
+package com.mudita.mmd.samples.game2048k.game
 
 import kotlin.random.Random
 import org.junit.Assert.assertEquals

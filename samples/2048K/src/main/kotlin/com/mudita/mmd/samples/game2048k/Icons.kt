@@ -1,4 +1,4 @@
-package com.mudita.mmd.samples.twofold
+package com.mudita.mmd.samples.game2048k
 
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap

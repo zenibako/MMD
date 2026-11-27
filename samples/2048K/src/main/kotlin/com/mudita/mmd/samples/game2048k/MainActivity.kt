@@ -1,4 +1,4 @@
-package com.mudita.mmd.samples.twofold
+package com.mudita.mmd.samples.game2048k
 
 import android.content.Context
 import android.os.Bundle
@@ -14,10 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.mudita.mmd.ThemeMMD
-import com.mudita.mmd.samples.twofold.game.GameCodec
-import com.mudita.mmd.samples.twofold.game.GameState
+import com.mudita.mmd.samples.game2048k.game.GameCodec
+import com.mudita.mmd.samples.game2048k.game.GameState
 
-private const val PREFS = "twofold"
+private const val PREFS = "2048K"
 private const val KEY_GAME = "game"
 /** The older single tile-style setting, read once to carry a saved choice over. */
 private const val KEY_LEGACY_STYLE = "tileStyle"

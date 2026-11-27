@@ -1,4 +1,4 @@
-package com.mudita.mmd.samples.twofold
+package com.mudita.mmd.samples.game2048k
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mudita.mmd.components.text.TextMMD
-import com.mudita.mmd.samples.twofold.game.GOAL_TILE
+import com.mudita.mmd.samples.game2048k.game.GOAL_TILE
 
 val Ink = Color.Black
 val Paper = Color.White

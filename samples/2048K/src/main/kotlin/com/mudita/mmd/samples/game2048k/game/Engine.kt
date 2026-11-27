@@ -28,7 +28,7 @@
  * values (no animation ids), the random source is injectable for tests, and the grid
  * size is a parameter.
  */
-package com.mudita.mmd.samples.twofold.game
+package com.mudita.mmd.samples.game2048k.game
 
 import kotlin.random.Random
 
