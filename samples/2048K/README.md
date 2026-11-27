@@ -1,4 +1,4 @@
-# Twofold
+# 2048K
 
 A sliding-tile number game (in the style of 2048) built with MMD for E Ink phones such as the
 Mudita Kompakt.

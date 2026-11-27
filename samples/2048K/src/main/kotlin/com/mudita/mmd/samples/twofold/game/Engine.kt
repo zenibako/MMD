@@ -24,7 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * Changes for Twofold: no Compose/ViewModel/serialization dependencies, tiles are plain
+ * Changes for 2048K: no Compose/ViewModel/serialization dependencies, tiles are plain
  * values (no animation ids), the random source is injectable for tests, and the grid
  * size is a parameter.
  */
