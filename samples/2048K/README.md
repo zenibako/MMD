@@ -34,9 +34,9 @@ Slide the board up, down, left or right. Equal tiles that touch merge into their
 ## Build and install
 
 ```sh
-./gradlew :samples:twofold:assembleDebug
-adb install -r samples/twofold/build/outputs/apk/debug/twofold-debug.apk
-./gradlew :samples:twofold:testDebugUnitTest   # game logic tests
+./gradlew :samples:2048K:assembleDebug
+adb install -r samples/2048K/build/outputs/apk/debug/2048K-debug.apk
+./gradlew :samples:2048K:testDebugUnitTest   # game logic tests
 ```
 
 ## Credits
