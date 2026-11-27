@@ -82,6 +82,7 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             value >= 128 -> {
                 solid = true
                 modifier.clip(shape).background(Ink).goalFrame(value, d(4.dp), d(2.dp), shape)
+                    .pips(level(value) - 7, ::d)
             }
             value >= 8 -> modifier.border(d(3.dp), Ink, shape)
             else -> modifier.border(d(1.dp), Ink, shape)
@@ -98,6 +99,7 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             } else {
                 solid = true
                 modifier.background(Ink).goalFrame(value, d(4.dp), d(2.dp), RectangleShape)
+                    .pips(n - 5, ::d)
             }
         }
 
@@ -107,7 +109,7 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             // One white inner frame from 128, two from the goal tile.
             if (value >= 128) m = m.padding(d(4.dp)).border(d(2.dp), Paper)
             if (value >= GOAL_TILE) m = m.padding(d(4.dp)).border(d(2.dp), Paper)
-            m
+            m.pips(level(value) - 7, ::d)
         }
 
         TileStyle.FOLD -> {
@@ -124,7 +126,7 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
 
         // Dots never shrink below 3dp, so they stay visible in the small previews.
         TileStyle.STEPS -> modifier.border(d(if (value >= 128) 3.dp else 1.dp), Ink)
-            .stepDots(level(value), maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp))
+            .stepDots(level(value), maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp), Ink)
 
         TileStyle.NUMBERS -> {
             underline = value >= 128
@@ -190,15 +192,34 @@ private fun Modifier.foldedCorner(fraction: Float, color: Color): Modifier = dra
     drawPath(path, color)
 }
 
-/** A centred row of [count] dots along the bottom edge. */
-private fun Modifier.stepDots(count: Int, dot: Dp, gap: Dp): Modifier = drawBehind {
-    val r = dot.toPx() / 2
-    val step = dot.toPx() + gap.toPx()
-    val total = count * step - gap.toPx()
-    val startX = (size.width - total) / 2 + r
-    val y = size.height - r - dot.toPx()
-    repeat(count) { drawCircle(Ink, radius = r, center = Offset(startX + it * step, y)) }
+/**
+ * Centred rows of [count] dots along the bottom edge. When a row would run past the tile's
+ * sides (past 2048 in Steps), the rest wrap onto a row above, so no dot is ever cut off.
+ */
+private fun Modifier.stepDots(count: Int, dot: Dp, gap: Dp, color: Color): Modifier = drawBehind {
+    if (count <= 0) return@drawBehind
+    val d = dot.toPx()
+    val r = d / 2
+    val step = d + gap.toPx()
+    val perRow = (((size.width - 2 * d) + gap.toPx()) / step).toInt().coerceAtLeast(1)
+    var left = count
+    var row = 0
+    while (left > 0) {
+        val n = minOf(left, perRow)
+        val startX = (size.width - (n * step - gap.toPx())) / 2 + r
+        val y = size.height - r - d - row * step
+        repeat(n) { drawCircle(color, radius = r, center = Offset(startX + it * step, y)) }
+        left -= n
+        row++
+    }
 }
+
+/**
+ * White dots on a solid tile, one per doubling after the tile turns solid, so 128, 256, 512
+ * and 1024 no longer look alike. They never shrink below 3 dp, to stay visible in previews.
+ */
+private fun Modifier.pips(count: Int, d: (Dp) -> Dp): Modifier =
+    stepDots(count, maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp), Paper)
 
 /** On a filled tile, adds a white inner frame once the goal tile is reached. */
 private fun Modifier.goalFrame(value: Int, inset: Dp, stroke: Dp, shape: Shape): Modifier =
