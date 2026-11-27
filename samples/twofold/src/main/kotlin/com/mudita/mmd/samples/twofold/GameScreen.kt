@@ -198,10 +198,10 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
         KompaktTopBar(title = "Tile style", onBack = onBack)
         TileStyle.entries.forEach { style ->
             // Radio rows as in stock Settings: radio at 16 dp, label at about 61 dp, a dashed
-            // divider from the label. Rows share the height, so all styles fit without paging.
+            // divider from the label.
             Row(
                 Modifier
-                    .weight(1f)
+                    .height(StyleRowHeight)
                     .fillMaxWidth()
                     .selectable(selected = style == selected, onClick = { onSelect(style) })
                     .padding(start = Kompakt.TextInset, end = 12.dp),
@@ -228,6 +228,9 @@ private fun StyleScreen(selected: TileStyle, onSelect: (TileStyle) -> Unit, onBa
 
 /** Where radio-row labels start, as in the stock Settings radio screens. */
 private val StyleLabelInset = 61.dp
+
+/** Two-line radio rows: label and description, with room for the tile previews. */
+private val StyleRowHeight = 72.dp
 
 /**
  * On-screen arrows for people who prefer tapping to swiping: the skill's outlined icon button

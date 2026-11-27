@@ -9,16 +9,12 @@ Slide the board up, down, left or right. Equal tiles that touch merge into their
 ## Made for E Ink
 
 - **No animation.** Each move is one redraw, so there is no ghosting from in-between frames.
-- **Black-and-white tiles.** Values are told apart by line weight and fill, never colour. Seven
+- **Black-and-white tiles.** Values are told apart by line weight and fill, never colour. Four
   styles are available under **⋮ → Tile style**, and the choice is remembered:
   - *Weight*: thin outline for 2 and 4, heavy outline for 8 to 64, solid black from 128 with a
     white dot for each doubling after that, and an inner frame from 2048.
-  - *Rounded*: the same, with MMD's 8 dp button and card corners.
-  - *Frames*: one nested frame per doubling up to 16, then solid, with a white dot
-    per doubling from 64.
-  - *Ink*: every tile solid black, with white inner frames from 128 and 2048 and a white
-    dot per doubling from 256.
-  - *Numbers*: a plain grid where only the digits' weight changes.
+  - *Frames*: one nested frame per doubling up to 16, then solid, with a white dot per doubling
+    from 64.
   - *Fold*: a black corner folds in further each doubling; from 128 the tile turns black and a
     white corner grows.
   - *Steps*: one dot along the bottom of the tile per doubling, wrapping onto a second row past

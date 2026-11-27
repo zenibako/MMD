@@ -4,24 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,24 +26,19 @@ import com.mudita.mmd.samples.twofold.game.GOAL_TILE
 val Ink = Color.Black
 val Paper = Color.White
 
-/** MMD's corner radius for buttons and cards. */
-private val MmdCorner = RoundedCornerShape(8.dp)
-
 /**
  * Ways to draw tiles. All of them are pure black and white with no gradients, shadows or
  * animation, as MMD asks for on E Ink; they differ in how a value's size is shown.
  */
 enum class TileStyle(val label: String, val description: String) {
     WEIGHT("Weight", "Heavier, then solid"),
-    ROUNDED("Rounded", "Weight, rounded"),
     FRAMES("Frames", "Frame per doubling"),
-    INK("Ink", "Solid, framed"),
-    NUMBERS("Numbers", "Bolder digits"),
     FOLD("Fold", "Corner folds in"),
     STEPS("Steps", "A dot per doubling"),
     ;
 
     companion object {
+        /** Unknown names, including the removed Rounded, Ink and Numbers styles, fall back to Weight. */
         fun fromName(name: String?) = entries.firstOrNull { it.name == name } ?: WEIGHT
     }
 }
@@ -65,27 +55,20 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
 
     if (value == null) {
         // Empty cells: a dashed outline instead of a grey one, so the board stays pure black and white.
-        val empty = when (style) {
-            TileStyle.NUMBERS -> modifier.border(d(1.dp), Ink)
-            TileStyle.ROUNDED -> modifier.dashedOutline(d(1.dp), corner = 8.dp)
-            else -> modifier.dashedOutline(d(1.dp))
-        }
-        Box(empty)
+        Box(modifier.dashedOutline(d(1.dp)))
         return
     }
 
     var solid = false
-    var underline = false
-    val shape: Shape = if (style == TileStyle.ROUNDED) MmdCorner else RectangleShape
     val box: Modifier = when (style) {
-        TileStyle.WEIGHT, TileStyle.ROUNDED -> when {
+        TileStyle.WEIGHT -> when {
             value >= 128 -> {
                 solid = true
-                modifier.clip(shape).background(Ink).goalFrame(value, d(4.dp), d(2.dp), shape)
+                modifier.background(Ink).goalFrame(value, d(4.dp), d(2.dp))
                     .pips(level(value) - 7, ::d)
             }
-            value >= 8 -> modifier.border(d(3.dp), Ink, shape)
-            else -> modifier.border(d(1.dp), Ink, shape)
+            value >= 8 -> modifier.border(d(3.dp), Ink)
+            else -> modifier.border(d(1.dp), Ink)
         }
 
         TileStyle.FRAMES -> {
@@ -98,18 +81,9 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
                 m
             } else {
                 solid = true
-                modifier.background(Ink).goalFrame(value, d(4.dp), d(2.dp), RectangleShape)
+                modifier.background(Ink).goalFrame(value, d(4.dp), d(2.dp))
                     .pips(n - 5, ::d)
             }
-        }
-
-        TileStyle.INK -> {
-            solid = true
-            var m = modifier.background(Ink)
-            // One white inner frame from 128, two from the goal tile.
-            if (value >= 128) m = m.padding(d(4.dp)).border(d(2.dp), Paper)
-            if (value >= GOAL_TILE) m = m.padding(d(4.dp)).border(d(2.dp), Paper)
-            m.pips(level(value) - 7, ::d)
         }
 
         TileStyle.FOLD -> {
@@ -121,17 +95,12 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             val start = if (scale < 1f) 0.24f else 0.14f
             val fraction = start + 0.06f * (if (solid) minOf(n, 11) - 7 else n - 1)
             val base = if (solid) modifier.background(Ink) else modifier.border(d(1.dp), Ink)
-            base.foldedCorner(fraction, if (solid) Paper else Ink).goalFrame(value, d(4.dp), d(2.dp), RectangleShape)
+            base.foldedCorner(fraction, if (solid) Paper else Ink).goalFrame(value, d(4.dp), d(2.dp))
         }
 
         // Dots never shrink below 3dp, so they stay visible in the small previews.
         TileStyle.STEPS -> modifier.border(d(if (value >= 128) 3.dp else 1.dp), Ink)
             .stepDots(level(value), maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp), Ink)
-
-        TileStyle.NUMBERS -> {
-            underline = value >= 128
-            if (value >= GOAL_TILE) modifier.border(d(1.dp), Ink).padding(d(4.dp)).border(d(3.dp), Ink) else modifier.border(d(1.dp), Ink)
-        }
     }
 
     val digits = value.toString().length
@@ -141,15 +110,7 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
         digits == 4 -> 22f
         else -> 17f
     }
-    val weight = when (style) {
-        TileStyle.NUMBERS -> when {
-            value >= 64 -> FontWeight.Black
-            value >= 8 -> FontWeight.Bold
-            else -> FontWeight.Medium
-        }
-        TileStyle.INK -> FontWeight.Bold
-        else -> if (value >= 8) FontWeight.Bold else FontWeight.Medium
-    }
+    val weight = if (value >= 8) FontWeight.Bold else FontWeight.Medium
     // Shrink digits inside nested frames so they stay clear of the lines.
     val frameShrink = if (style == TileStyle.FRAMES && !solid) 1f - 0.08f * (level(value) - 1) else 1f
 
@@ -159,7 +120,6 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
             color = if (solid) Paper else Ink,
             fontWeight = weight,
             fontSize = (baseSize * scale * frameShrink).sp,
-            textDecoration = if (underline) TextDecoration.Underline else null,
             textAlign = TextAlign.Center,
             maxLines = 1,
         )
@@ -167,15 +127,14 @@ fun StyledTile(value: Int?, style: TileStyle, modifier: Modifier, scale: Float =
 }
 
 /** A 1 dp dashed (2/2) outline, like the stock list dividers. */
-private fun Modifier.dashedOutline(stroke: Dp, corner: Dp = 0.dp): Modifier = drawBehind {
+private fun Modifier.dashedOutline(stroke: Dp): Modifier = drawBehind {
     val w = stroke.toPx()
     val dash = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx()))
     val inset = w / 2
-    drawRoundRect(
+    drawRect(
         color = Ink,
         topLeft = Offset(inset, inset),
         size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner.toPx()),
         style = Stroke(width = w, pathEffect = dash),
     )
 }
@@ -222,5 +181,5 @@ private fun Modifier.pips(count: Int, d: (Dp) -> Dp): Modifier =
     stepDots(count, maxOf(d(4.dp), 3.dp), maxOf(d(2.dp), 1.dp), Paper)
 
 /** On a filled tile, adds a white inner frame once the goal tile is reached. */
-private fun Modifier.goalFrame(value: Int, inset: Dp, stroke: Dp, shape: Shape): Modifier =
-    if (value >= GOAL_TILE) padding(inset).border(stroke, Paper, shape) else this
+private fun Modifier.goalFrame(value: Int, inset: Dp, stroke: Dp): Modifier =
+    if (value >= GOAL_TILE) padding(inset).border(stroke, Paper) else this
