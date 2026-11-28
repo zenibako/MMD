@@ -426,11 +426,49 @@ fun ChatScreen(
     var failure by remember { mutableStateOf<Pair<String, String>?>(null) }
     // The reply so far while it streams, in whole paragraphs only (see completedParagraphs).
     var live by remember { mutableStateOf<String?>(null) }
+    // A tool call the run is waiting on you to allow, and the quiet line once it's answered.
+    var approval by remember { mutableStateOf<ApprovalRequest?>(null) }
+    var approvalNote by remember { mutableStateOf<String?>(null) }
+    var approveSheet by remember { mutableStateOf(false) }
+    var answering by remember { mutableStateOf(false) }
+
+    // A waiting approval that the run moved past was answered somewhere else.
+    fun approvalMovedOn() {
+        if (approval != null) {
+            approvalNote = approvalOutcomeLine(ApprovalOutcome.AlreadyResolved, approval!!.tool)
+            approval = null
+            approveSheet = false
+        }
+    }
+
+    fun answerApproval(choice: String) {
+        val request = approval ?: return
+        if (answering) return
+        answering = true
+        scope.launch {
+            val outcome = try {
+                client.answerApproval(request, choice)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ApprovalOutcome.Failed(connectionError("no answer from Hermes", e))
+            }
+            answering = false
+            approvalNote = approvalOutcomeLine(outcome, request.tool)
+            // Keep the card on a failure, so you can try again or answer elsewhere.
+            if (outcome !is ApprovalOutcome.Failed && approval == request) {
+                approval = null
+                if (sending) working = "Working…"
+            }
+        }
+    }
 
     // Runs one turn for [text], already shown as your message.
     fun runTurn(text: String) {
         failure = null
         live = null
+        approval = null
+        approvalNote = null
         // You just sent it: show it, even if you had scrolled up.
         followBottom = true
         // Static: no dots or spinner, which would redraw the E Ink screen.
@@ -448,11 +486,14 @@ fun ChatScreen(
                         when (e) {
                             // Show which tool is running, but don't repaint per token.
                             is ChatEvent.Tool -> {
+                                // A tool finishing means the run got past the approval.
+                                if (e.phase == "completed" || e.phase == "failed") approvalMovedOn()
                                 working = "Working: ${e.name}…" + if (e.detail.isNotBlank()) " ${e.detail}" else ""
                                 usedTools += e.name
                             }
                             // Redraw only when a paragraph completes.
                             is ChatEvent.Delta -> {
+                                approvalMovedOn()
                                 buffer.append(e.text)
                                 val ready = completedParagraphs(buffer.toString())
                                 if (ready.length > (live?.length ?: 0)) {
@@ -474,11 +515,20 @@ fun ChatScreen(
                                 }
                                 live = null
                                 working = null
+                                approval = null
+                                approveSheet = false
                                 if (shownTitle.isBlank()) refreshTitle()
+                            }
+                            is ChatEvent.Approval -> {
+                                approval = e.request
+                                approvalNote = null
+                                working = "Waiting for your approval"
                             }
                             is ChatEvent.Failed -> {
                                 live = null
                                 working = null
+                                approval = null
+                                approveSheet = false
                                 failure = text to runFailureLine(e.reason)
                             }
                         }
@@ -558,7 +608,7 @@ fun ChatScreen(
         }
     }
     // The list's rows: the messages, then the reply streaming in, then a failure line.
-    val rowCount = shown.size + (if (live != null) 1 else 0) + (if (failure != null) 1 else 0)
+    val rowCount = shown.size + listOf(live, approval, approvalNote, failure).count { it != null }
     LaunchedEffect(rowCount, live?.length, showTools, historyLoaded) {
         if (rowCount > 0 && followBottom && !listState.isScrollInProgress) {
             // Never move the list under the reader's finger: a reply that lands mid-scroll
@@ -618,6 +668,20 @@ fun ChatScreen(
                 }
             }
             live?.let { text -> item(key = "live") { MessageBubble(text, mine = false, time = null) } }
+            approval?.let { request ->
+                item(key = "approval") {
+                    ApprovalCard(
+                        request,
+                        enabled = !answering,
+                        onDeny = { answerApproval("deny") },
+                        onApprove = {
+                            val ways = request.approveChoices
+                            if (ways.size > 1) approveSheet = true else answerApproval(ways.first())
+                        },
+                    )
+                }
+            }
+            approvalNote?.let { note -> item(key = "approvalNote") { ToolSummaryLine(note) } }
             failure?.let { (_, line) ->
                 item(key = "failure") { FailureLine(line, retryEnabled = !sending) { retry() } }
             }
@@ -682,6 +746,16 @@ fun ChatScreen(
                 }
             }
         }
+        approval?.takeIf { approveSheet }?.let { request ->
+            KompaktSheet("Approve ${request.tool}?", onDismiss = { approveSheet = false }) {
+                request.approveChoices.forEach { choice ->
+                    SheetButton(approveChoiceLabel(choice)) {
+                        approveSheet = false
+                        answerApproval(choice)
+                    }
+                }
+            }
+        }
         if (modelSheet) {
             KompaktSheet("Model", onDismiss = { modelSheet = false }) {
                 val c = catalog
@@ -735,6 +809,31 @@ private fun FailureLine(line: String, retryEnabled: Boolean, onRetry: () -> Unit
             overflow = TextOverflow.Ellipsis,
         )
         OutlinedSquareButton(Icons.Outlined.Refresh, "Retry", enabled = retryEnabled, onClick = onRetry)
+    }
+}
+
+/**
+ * A tool call waiting on you, inline in the chat like an info card (2 dp outline, 8 dp corners):
+ * what wants to run and one line about it, then an outlined Deny and the one black Approve.
+ */
+@Composable
+private fun ApprovalCard(request: ApprovalRequest, enabled: Boolean, onDeny: () -> Unit, onApprove: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .border(2.dp, Color.Black, RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextMMD("Allow ${request.tool}?", style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (request.summary.isNotBlank()) {
+            TextMMD(request.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.weight(1f)) { SheetButton("Deny") { if (enabled) onDeny() } }
+            Box(Modifier.weight(1f)) { SheetButton("Approve", filled = true) { if (enabled) onApprove() } }
+        }
     }
 }
 
@@ -941,6 +1040,7 @@ private fun uniqueStamp(): String =
 fun connectionError(what: String, e: Throwable): String = when (e) {
     is java.net.SocketTimeoutException, is java.net.ConnectException, is java.net.UnknownHostException ->
         "$what. Can't reach Hermes; check Tailscale."
+    is ProfileUnknownException -> profileUnknownLine(what, e.slug)
     else -> "$what: ${e.message ?: e.javaClass.simpleName}"
 }
 

@@ -5,7 +5,7 @@ A small MMD sample app for chatting with a
 **Mudita Kompakt**: browse sessions, start new ones, and talk to the agent on E Ink.
 
 > Status: prototype, running on a Kompakt (MuditaOS K, Android 12, 480×800) against
-> Hermes Agent 0.22.6.
+> Hermes Agent 0.23.4.
 
 ## Scope: chat only
 
@@ -104,10 +104,15 @@ label, set `API_SERVER_MODEL_NAME` for that profile on the server. When more tha
 is configured, the name in the top bar opens a menu of profiles; picking one reloads its
 sessions. A chat stays on the profile it was opened from.
 
+When a run stops to ask before running a tool (the session stream's `approval.request`), the
+chat shows an inline card naming the tool and what it will run, with Deny and Approve. Where
+Hermes offers more than one way to approve (once, for this session, always), Approve opens a
+choice sheet. The answer goes to `POST /v1/runs/{id}/approval`: `{request_id,
+execution_generation, choice}` when the event carries a generation, otherwise `{choice}` with
+the `request_id`. A prompt already answered elsewhere is reported as such, not as an error.
+
 ## Next steps
 
-* Tool-approval prompts (`POST /v1/runs/{id}/approval`) as large Yes/No buttons, so the agent
-  can ask permission from the phone.
 * "Stop" for a running turn (`POST /v1/runs/{id}/stop`).
 * Hide system-injected prompts (cron skill instructions) in read-only histories.
 * Move secrets to the Android Keystore.

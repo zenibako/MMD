@@ -43,4 +43,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
+    // The real org.json, since android.jar's is a stub in JVM unit tests.
+    testImplementation("org.json:json:20240303")
 }

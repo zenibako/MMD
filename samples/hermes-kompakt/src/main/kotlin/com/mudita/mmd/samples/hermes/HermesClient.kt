@@ -58,6 +58,8 @@ sealed interface ChatEvent {
     /** [servedModel]: the model that actually answered (the run's runtime), if Hermes said. */
     data class Done(val finalText: String?, val servedModel: String? = null) : ChatEvent
     data class Failed(val reason: String) : ChatEvent
+    /** The run is waiting for you to allow a tool call. */
+    data class Approval(val request: ApprovalRequest) : ChatEvent
 }
 
 class HermesApiException(val code: Int, message: String) : IOException(message)
@@ -250,54 +252,16 @@ class HermesClient(
                             if (n > 0) String(buf, 0, n) else ""
                         }
                     }.getOrNull().orEmpty()
-                    throw HermesApiException(code, detail)
+                    throw apiError(code, "/api/sessions/…/chat/stream", detail)
                 }
-                val text = StringBuilder()
-                var completed = ""
+                val assembler = StreamAssembler()
                 conn.inputStream.bufferedReader().use { reader ->
                     for (e in reader.sseEvents()) {
                         // Event names only: payloads carry conversation text.
                         Log.d("Hermes", "SSE ${e.event.ifBlank { "(message)" }}")
                         val data = runCatching { JSONObject(e.data) }.getOrNull() ?: JSONObject()
-                        when (e.event.ifBlank { data.str("type", "event") }) {
-                            "assistant.delta", "message.delta", "response.output_text.delta" -> {
-                                val d = data.str("delta", "text", "content")
-                                text.append(d)
-                                emit(ChatEvent.Delta(d))
-                            }
-                            "tool.started", "tool.completed", "tool.failed" ->
-                                emit(ChatEvent.Tool(data.str("name", "tool"), e.event.substringAfter('.')))
-                            // Named progress frames (platforms.api_server.tool_progress_events).
-                            "hermes.tool.progress" -> emit(
-                                ChatEvent.Tool(
-                                    name = data.str("name", "tool", "tool_name").ifBlank { "tool" },
-                                    phase = "progress",
-                                    detail = data.str("message", "status", "summary", "label"),
-                                ),
-                            )
-                            // The whole reply (or, for a failed turn, Hermes's account of the failure).
-                            "assistant.completed" -> completed = data.str("content", "text")
-                            "run.completed" -> {
-                                val final = data.str("output", "final", "text", "content")
-                                    .ifBlank { completed }.ifBlank { text.toString() }
-                                val served = data.optJSONObject("runtime")?.str("model")?.ifBlank { null }
-                                emit(ChatEvent.Done(final, served))
-                                return@use
-                            }
-                            "run.failed", "run.cancelled", "run.interrupted", "error" -> {
-                                Log.w("Hermes", "Run ended with ${e.event}")
-                                val reason = (data.optJSONObject("error") ?: data.optJSONObject("run")?.optJSONObject("error"))
-                                    ?.str("message", "detail", "type")
-                                    ?: data.str("error", "message", "reason", "detail")
-                                emit(
-                                    ChatEvent.Failed(
-                                        reason.ifBlank { completed }.ifBlank { data.str("turn_exit_reason") }
-                                            .ifBlank { e.event.substringAfter('.') },
-                                    ),
-                                )
-                                return@use
-                            }
-                        }
+                        for (event in assembler.accept(e.event, data)) emit(event)
+                        if (assembler.finished) return@use
                     }
                     // The stream ended without a terminal event, so the reply is incomplete.
                     emit(ChatEvent.Failed("the connection closed before the reply finished"))
@@ -345,8 +309,30 @@ class HermesClient(
 
     private fun requestOk(method: String, path: String, body: JSONObject? = null): String {
         val (code, text) = request(method, path, body)
-        if (code !in 200..299) throw HermesApiException(code, "HTTP $code on $path: ${text.take(200)}")
+        if (code !in 200..299) throw apiError(code, path, text)
         return text
+    }
+
+    /** A failed response as an exception; an unknown `/p/<profile>/` gets its own, matched on the code. */
+    private fun apiError(code: Int, path: String, text: String): java.io.IOException =
+        if (code == 404 && apiErrorCode(text) == PROFILE_UNKNOWN_CODE) {
+            ProfileUnknownException(profile.slug)
+        } else {
+            HermesApiException(code, "HTTP $code on $path: ${text.take(200)}")
+        }
+
+    /**
+     * Answers a waiting tool approval with [choice] (once, session, always or deny). A prompt
+     * already answered elsewhere, or a run that moved on, comes back as
+     * [ApprovalOutcome.AlreadyResolved] rather than an error.
+     */
+    suspend fun answerApproval(approval: ApprovalRequest, choice: String): ApprovalOutcome = withContext(Dispatchers.IO) {
+        val (code, text) = request(
+            "POST",
+            "/v1/runs/${enc(approval.runId)}/approval",
+            JSONObject(approvalBody(approval, choice)),
+        )
+        if (code in 200..299) ApprovalOutcome.Answered(choice) else approvalFailure(code, text)
     }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
