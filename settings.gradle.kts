@@ -23,3 +23,4 @@ rootProject.name = "MMD"
 
 include(":mmd-core")
 include(":samples:hermes-kompakt")
+include(":samples:2048K")
