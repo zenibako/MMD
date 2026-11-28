@@ -274,6 +274,8 @@ fun MessageBubble(
     sameAuthorAsNext: Boolean = false,
     // Another agent's name, drawn above its message in 18 sp Black.
     sender: String? = null,
+    // Draw [text] as Markdown (agent replies); yours stay plain.
+    markdown: Boolean = false,
 ) {
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
     val r = 12.dp
@@ -301,7 +303,8 @@ fun MessageBubble(
                 .border(if (mine) 2.dp else 1.dp, Color.Black, shape)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            TextMMD(withBoldMentions(text), style = MaterialTheme.typography.bodyMedium)
+            val body = MaterialTheme.typography.bodyMedium.scaledForMessages()
+            if (markdown) MarkdownText(text, body) else TextMMD(withBoldMentions(text), style = body)
         }
         if (!time.isNullOrBlank()) {
             TextMMD(time, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)

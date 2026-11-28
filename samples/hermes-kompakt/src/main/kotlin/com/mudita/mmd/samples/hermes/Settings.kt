@@ -42,7 +42,7 @@ data class HermesSettings(
 }
 
 object SettingsStore {
-    private const val PREFS = "hermes_settings"
+    const val PREFS = "hermes_settings"
 
     fun load(context: Context): HermesSettings {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

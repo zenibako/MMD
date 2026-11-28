@@ -653,6 +653,8 @@ fun ChatScreen(
                         MessageBubble(
                             m.text,
                             mine = m.role == "user",
+                            // Agent replies and messages from other agents are Markdown.
+                            markdown = m.role != "user",
                             time = listOfNotNull(m.time?.let { timeOfDayLabel(it, zone, locale, use24h) }, m.footer)
                                 .joinToString(" · "),
                             // Same author next, on the same day: group the two 2 dp apart.
@@ -669,7 +671,7 @@ fun ChatScreen(
                     else -> EventLine(m.label, m.text)
                 }
             }
-            live?.let { text -> item(key = "live") { MessageBubble(text, mine = false, time = null) } }
+            live?.let { text -> item(key = "live") { MessageBubble(text, mine = false, time = null, markdown = true) } }
             approval?.let { request ->
                 item(key = "approval") {
                     ApprovalCard(
@@ -805,7 +807,7 @@ private fun FailureLine(line: String, retryEnabled: Boolean, onRetry: () -> Unit
         TextMMD(
             line,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.scaledForMessages(),
             textAlign = TextAlign.End,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
@@ -845,7 +847,7 @@ private fun ToolSummaryLine(text: String) {
     TextMMD(
         text,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodyMedium.scaledForMessages(),
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
@@ -917,7 +919,9 @@ fun SettingsScreen(onDone: () -> Unit) {
     var status by remember { mutableStateOf("") }
     // Bumped by every URL edit and Test tap, so a slow Test can't overwrite a newer result.
     var testSeq by remember { mutableStateOf(0) }
+    var textSizeSheet by remember { mutableStateOf(false) }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         MessagesTopBar(label = "Hermes", title = "Settings")
         Column(
@@ -931,6 +935,7 @@ fun SettingsScreen(onDone: () -> Unit) {
             Field("API key (API_SERVER_KEY)", s.profiles.first().apiKey) { key ->
                 s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
             }
+            SheetButton("Text size: ${MessageTextSize.current.label}") { textSizeSheet = true }
             ProfilesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
             DisplayNamesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
             if (status.isNotBlank()) TextMMD(status)
@@ -956,6 +961,25 @@ fun SettingsScreen(onDone: () -> Unit) {
                         onDone()
                     }
                 }) { TextMMD("Save") }
+            }
+        }
+    }
+        if (textSizeSheet) TextSizeSheet { textSizeSheet = false }
+    }
+}
+
+/**
+ * "Text size: Default": opens a choice sheet (Small / Default / Large / Largest) that scales
+ * message text. Applies at once, like the stock settings.
+ */
+@Composable
+private fun TextSizeSheet(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    KompaktSheet("Text size", onDismiss = onDismiss) {
+        TextSize.entries.forEach { size ->
+            ChoiceButton(size.label, selected = size == MessageTextSize.current) {
+                MessageTextSize.set(context, size)
+                onDismiss()
             }
         }
     }

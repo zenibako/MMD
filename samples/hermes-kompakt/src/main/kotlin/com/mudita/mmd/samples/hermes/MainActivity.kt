@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Pick up profiles pushed by tools/import-profiles.py before reading the settings.
         SettingsStore.importPendingProfiles(this)
+        MessageTextSize.load(this)
         val start: Screen = when {
             !SettingsStore.load(this).isHermesConfigured -> Screen.Settings
             else -> Screen.Sessions
