@@ -118,3 +118,14 @@ class StreamAssemblerTest {
         assertEquals("echo hello", (events[0] as ChatEvent.Approval).request.summary)
     }
 }
+
+class StreamToolNameTest {
+    @Test fun sessionStreamToolEventsUseToolName() {
+        val events = StreamAssembler().accept("tool.started", JSONObject("""{"message_id":"m","tool_name":"terminal","preview":"echo hello"}"""))
+        assertEquals(listOf(ChatEvent.Tool("terminal", "started")), events)
+    }
+
+    @Test fun namelessToolEventsAreDropped() {
+        assertEquals(emptyList<ChatEvent>(), StreamAssembler().accept("tool.completed", JSONObject("{}")))
+    }
+}

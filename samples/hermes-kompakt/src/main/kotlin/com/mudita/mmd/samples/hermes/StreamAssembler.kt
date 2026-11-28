@@ -25,8 +25,11 @@ class StreamAssembler {
                 text.append(d)
                 listOf(ChatEvent.Delta(d))
             }
-            "tool.started", "tool.completed", "tool.failed" ->
-                listOf(ChatEvent.Tool(data.str("name", "tool"), name.substringAfter('.')))
+            // The session stream names the tool in `tool_name` (Hermes 0.23), older frames in `name`.
+            "tool.started", "tool.completed", "tool.failed" -> {
+                val tool = data.str("tool_name", "name", "tool")
+                if (tool.isEmpty()) emptyList() else listOf(ChatEvent.Tool(tool, name.substringAfter('.')))
+            }
             // Named progress frames (platforms.api_server.tool_progress_events).
             "hermes.tool.progress" -> listOf(
                 ChatEvent.Tool(
