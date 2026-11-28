@@ -42,6 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -264,7 +267,14 @@ fun ComposeBar(content: @Composable RowScope.() -> Unit) {
  * from one author sit 2 dp apart ([sameAuthorAsNext]); a change of author gets 18 dp.
  */
 @Composable
-fun MessageBubble(text: String, mine: Boolean, time: String?, sameAuthorAsNext: Boolean = false) {
+fun MessageBubble(
+    text: String,
+    mine: Boolean,
+    time: String?,
+    sameAuthorAsNext: Boolean = false,
+    // Another agent's name, drawn above its message in 18 sp Black.
+    sender: String? = null,
+) {
     val maxWidth = (LocalConfiguration.current.screenWidthDp * 0.8f).dp
     val r = 12.dp
     val shape = if (mine) {
@@ -276,17 +286,34 @@ fun MessageBubble(text: String, mine: Boolean, time: String?, sameAuthorAsNext: 
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = if (sameAuthorAsNext) 2.dp else 18.dp),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
+        if (!sender.isNullOrBlank()) {
+            TextMMD(
+                sender,
+                modifier = Modifier.padding(bottom = 4.dp),
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Box(
             Modifier
                 .widthIn(max = maxWidth)
                 .border(if (mine) 2.dp else 1.dp, Color.Black, shape)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            TextMMD(text, style = MaterialTheme.typography.bodyMedium)
+            TextMMD(withBoldMentions(text), style = MaterialTheme.typography.bodyMedium)
         }
         if (!time.isNullOrBlank()) {
             TextMMD(time, modifier = Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/** [text] with each @handle in Black (weight, not colour). */
+fun withBoldMentions(text: String): AnnotatedString = buildAnnotatedString {
+    append(text)
+    for (range in mentionRanges(text)) {
+        addStyle(SpanStyle(fontWeight = FontWeight.Black), range.first, range.last + 1)
     }
 }
 

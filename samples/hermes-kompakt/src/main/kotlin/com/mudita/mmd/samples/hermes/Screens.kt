@@ -659,9 +659,13 @@ fun ChatScreen(
                                 .joinToString(" · "),
                             // Same author next, on the same day: group the two 2 dp apart.
                             sameAuthorAsNext = shown.getOrNull(i + 1)?.let { n ->
-                                n.kind == MessageKind.CONVERSATION && n.role == m.role &&
+                                n.kind == MessageKind.CONVERSATION && n.role == m.role && n.sender == m.sender &&
                                     n.time?.let { localDay(it, zone) } == day
                             } == true,
+                            // Another agent's name, once at the start of its run of messages.
+                            sender = m.sender?.takeUnless {
+                                shown.getOrNull(i - 1)?.let { p -> p.kind == MessageKind.CONVERSATION && p.sender == m.sender } == true
+                            },
                         )
                     m.kind == MessageKind.TOOL_CALL && !showTools -> ToolSummaryLine(m.text)
                     else -> EventLine(m.label, m.text)

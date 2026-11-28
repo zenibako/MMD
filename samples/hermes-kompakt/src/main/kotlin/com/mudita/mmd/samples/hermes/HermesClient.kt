@@ -49,6 +49,8 @@ data class ChatMessage(
     val tools: List<String> = emptyList(),
     /** A quiet note under a reply, e.g. "Answered by granite-4" after a fallback. */
     val footer: String? = null,
+    /** For a message from another agent ([AGENT_ROLE]): its name, shown above the bubble. */
+    val sender: String? = null,
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */

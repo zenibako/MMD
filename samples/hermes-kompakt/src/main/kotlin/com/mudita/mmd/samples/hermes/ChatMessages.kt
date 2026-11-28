@@ -20,6 +20,8 @@ private val PLAIN_DISPLAY_KINDS = setOf("", "message", "text", "chat")
 
 /**
  * Turns one `/messages` entry into what the chat shows. Grouping:
+ * - another agent's message (see AgentMessages.kt) is [MessageKind.CONVERSATION] with role
+ *   [AGENT_ROLE] and its sender;
  * - `user` / `assistant` text is [MessageKind.CONVERSATION];
  * - an `assistant` entry's tool calls become a [MessageKind.TOOL_CALL] (after its text, if any);
  * - `tool` entries are [MessageKind.TOOL_RESULT];
@@ -37,6 +39,17 @@ fun historyEntries(
     val r = role.trim().lowercase()
     val body = text.trim()
     val kind = displayKind.trim().lowercase()
+    // Messages from other agents: a stamped DM, a DM's reply, or a subagent's result. Shown as
+    // received under the agent's name; Hermes's framing is dropped.
+    if (r == "user") {
+        val fromAgent = when (kind) {
+            in PLAIN_DISPLAY_KINDS -> parseStampedMessage(body)
+            "process_complete" -> parseAgentReply(body)
+            "async_delegation_complete" -> parseDelegationResult(body)
+            else -> null
+        }
+        if (fromAgent != null) return listOf(ChatMessage(AGENT_ROLE, fromAgent.text, time, sender = fromAgent.sender))
+    }
     if (kind !in PLAIN_DISPLAY_KINDS && r != "tool") {
         return listOfNotNull(body.takeIf { it.isNotEmpty() }?.let { ChatMessage(r, it, time, MessageKind.SYSTEM, label = kind) })
     }
