@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 rootProject.name = "MMD"
 
 include(":mmd-core")
+include(":samples:2048K")
