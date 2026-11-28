@@ -314,7 +314,7 @@ fun ChatScreen(
     onOpenSession: (sessionId: String, title: String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val readOnly = isReadOnlySource(source)
+    val readOnly = isReadOnlySession(source, title)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Hermes names a new session from its first message; shown once it has.
@@ -536,12 +536,10 @@ fun ChatScreen(
                 }.onFailure {
                     if (it is CancellationException) throw it
                     live = null
-                    if ((it as? HermesApiException)?.code == 409) {
-                        working = "This session belongs to another surface. Use Continue here."
-                    } else {
-                        working = null
-                        failure = text to connectionError("Couldn't send", it)
-                    }
+                    working = null
+                    // A refused turn (e.g. 409 session_active_turn while another window is
+                    // answering) is a failure line with Retry like any other.
+                    failure = text to sendFailureLine(it)
                 }
             } finally {
                 sending = false

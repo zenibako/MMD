@@ -79,3 +79,17 @@ private val MENTION = Regex("""(?<![\w@.])@[A-Za-z][A-Za-z0-9_-]*""")
 
 /** Where [text] mentions a handle (`@lead-dev`), for drawing them bold. */
 fun mentionRanges(text: String): List<IntRange> = MENTION.findAll(text).map { it.range }.toList()
+
+/** The failure line for a turn Hermes refused or that never reached it. */
+fun sendFailureLine(e: Throwable): String = when {
+    e is HermesApiException && e.code == 409 && apiErrorCode(e.message.orEmpty()) == "session_active_turn" ->
+        "Hermes is still answering this chat elsewhere. Try again in a moment."
+    e is HermesApiException && e.code == 409 ->
+        "Hermes refused the message: " + runFailureLine(apiErrorMessage(e.message.orEmpty()) ?: "conflict")
+    else -> connectionError("Couldn't send", e)
+}
+
+private val MESSAGE_FIELD = Regex(""""(?:message|error)"\s*:\s*"([^"]+)"""")
+
+/** The human-readable text of a Hermes error body (`error.message`, or a string `error`). */
+fun apiErrorMessage(body: String): String? = MESSAGE_FIELD.find(body)?.groupValues?.get(1)

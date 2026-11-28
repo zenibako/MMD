@@ -30,11 +30,20 @@ data class SessionSummary(
     /** Pinned on the server (the same flag the Hermes dashboard's sidebar uses). */
     val pinned: Boolean = false,
 ) {
-    val isReadOnly: Boolean get() = isReadOnlySource(source)
+    val isReadOnly: Boolean get() = isReadOnlySession(source, title)
 }
 
-/** Hermes lets API clients continue only sessions from these sources; the rest are read-only. */
-fun isReadOnlySource(source: String): Boolean = source.isNotBlank() && source !in setOf("api_server", "bot_room")
+/**
+ * Whether the app offers a compose bar for a session. API and bot-room sessions take turns from
+ * the API, and since Hermes 0.23.4 so does a profile's canonical Bot Chat (a `tui` session): a
+ * turn sent there goes to the live Bot Chat, as `hermes peer dm` does. Other terminal, cron,
+ * kanban and messaging sessions stay read-only here ("Continue here" copies them).
+ */
+fun isReadOnlySession(source: String, title: String): Boolean = when {
+    source.isBlank() || source in setOf("api_server", "bot_room") -> false
+    source == "tui" && title.trim() == BOT_CHAT_TITLE -> false
+    else -> true
+}
 
 data class ChatMessage(
     val role: String,

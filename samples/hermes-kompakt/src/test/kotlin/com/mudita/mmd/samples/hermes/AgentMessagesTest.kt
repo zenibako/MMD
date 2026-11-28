@@ -85,3 +85,21 @@ class MentionRangesTest {
         assertEquals(listOf("@lead-dev", "@researcher"), mentionRanges(text).map { text.substring(it) })
     }
 }
+
+class BotChatWritableTest {
+    @Test fun botChatIsWritableOtherTerminalSessionsAreNot() {
+        assertEquals(false, isReadOnlySession("tui", "Bot Chat"))
+        assertEquals(true, isReadOnlySession("tui", "Debug the router"))
+        assertEquals(false, isReadOnlySession("api_server", "anything"))
+        assertEquals(false, isReadOnlySession("bot_room", "Room"))
+        assertEquals(true, isReadOnlySession("cron", "Bot Chat"))
+        assertEquals(false, isReadOnlySession("", ""))
+    }
+
+    @Test fun refusedTurnsReadClearly() {
+        val busy = HermesApiException(409, "HTTP 409 on /x: {\"error\":{\"message\":\"turn running\",\"code\":\"session_active_turn\"}}")
+        assertEquals("Hermes is still answering this chat elsewhere. Try again in a moment.", sendFailureLine(busy))
+        val other = HermesApiException(409, "HTTP 409 on /x: {\"error\":{\"message\":\"Session is locked\",\"code\":\"x\"}}")
+        assertEquals("Hermes refused the message: Session is locked", sendFailureLine(other))
+    }
+}

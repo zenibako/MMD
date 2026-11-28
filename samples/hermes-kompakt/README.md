@@ -75,9 +75,13 @@ HTTP code or error if it fails.
 ## Sessions
 
 * **New** starts an API session titled "Kompakt <date time>" (Hermes requires unique titles).
-* Sessions from other sources (cron, kanban, messaging) are listed as **read-only**: Hermes
-  only lets API clients continue `api_server` and `bot_room` sessions. Opening one shows its
-  history and a **Continue here** button that forks it into a new API session.
+* Sessions from other sources (cron, kanban, messaging, terminal chats) are listed as
+  **read-only**: the app continues only `api_server` and `bot_room` sessions and each profile's
+  **Bot Chat**, where (since Hermes 0.23.4) a message goes to the live Bot Chat. Opening a
+  read-only one shows its history and a **Continue here** button that forks it into a new API
+  session.
+* In Bot Chat, messages from other agents ("Message from 🤖 …", and their replies) show as
+  received under the agent's name, and @handles are bold.
 * Sending closes the keyboard so the reply gets the whole screen.
 
 ## Profiles
