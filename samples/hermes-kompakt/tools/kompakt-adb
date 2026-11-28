@@ -1,0 +1,66 @@
+#!/bin/sh
+# Reconnect adb to a Kompakt (or any Android phone) without looking up the wireless-debugging port.
+#
+#   tools/kompakt-adb HOST[:PORT] [LAN_HOST]            connect; print the serial it ended up on
+#   tools/kompakt-adb --persist HOST[:PORT] [LAN_HOST]  also switch the phone to the fixed port 5555
+#
+# Order: HOST:PORT if given, HOST:5555, LAN_HOST:5555, then the port `adb mdns services`
+# advertises for Wireless debugging (same network only). The mDNS fallback only accepts the
+# phone this script last connected to for HOST (matched by its serial number, remembered in
+# ~/.cache/kompakt-adb), so it never picks up someone else's phone. Port 5555 lasts until the
+# phone reboots or Wireless debugging is turned off; then pass HOST:PORT from the Wireless
+# debugging screen once, with --persist to restore 5555.
+# HOST can also come from KOMPAKT_HOST, LAN_HOST from KOMPAKT_LAN_HOST. Exits nonzero, printing
+# no serial, if it couldn't connect.
+set -u
+persist=0
+if [ "${1:-}" = "--persist" ]; then persist=1; shift; fi
+host="${1:-${KOMPAKT_HOST:-}}"
+lan="${2:-${KOMPAKT_LAN_HOST:-}}"
+[ -n "$host" ] || { echo "usage: $0 [--persist] HOST[:PORT] [LAN_HOST]" >&2; exit 2; }
+ip="${host%%:*}"
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/kompakt-adb"
+known_file="$state_dir/$ip.serialno"
+known=$(cat "$known_file" 2>/dev/null || true)
+
+serialno() { adb -s "$1" shell getprop ro.serialno 2>/dev/null | tr -d '\r'; }
+
+try() {
+    out=$(adb connect "$1" 2>&1)
+    case "$out" in *"connected to"*) ;; *) return 1 ;; esac
+    [ "$(adb -s "$1" get-state 2>/dev/null)" = "device" ] || return 1
+    serial="$1"
+}
+
+serial=""
+case "$host" in *:*) try "$host" ;; esac
+[ -n "$serial" ] || try "$ip:5555" || true
+[ -n "$serial" ] || { [ -n "$lan" ] && try "$lan:5555"; } || true
+if [ -z "$serial" ] && [ -n "$known" ]; then
+    # Wireless debugging advertises its current port over mDNS on the local network. Accept
+    # only the phone last seen at HOST; disconnect anything else this probe connected.
+    for addr in $(adb mdns services 2>/dev/null | awk '/_adb-tls-connect/ {print $NF}'); do
+        if try "$addr"; then
+            [ "$(serialno "$addr")" = "$known" ] && break
+            adb disconnect "$addr" >/dev/null 2>&1
+            serial=""
+        fi
+    done
+fi
+[ -n "$serial" ] || { echo "No device: open Wireless debugging on the phone and pass HOST:PORT from it." >&2; exit 1; }
+
+# Remember which phone answers at HOST, for the mDNS fallback next time.
+sn=$(serialno "$serial")
+if [ -n "$sn" ] && [ "${serial%%:*}" = "$ip" ]; then
+    mkdir -p "$state_dir" && printf '%s\n' "$sn" > "$known_file"
+fi
+
+if [ "$persist" = 1 ] && [ "${serial##*:}" != "5555" ]; then
+    adb -s "$serial" tcpip 5555 >/dev/null || { echo "Couldn't switch $serial to port 5555." >&2; exit 1; }
+    sleep 3
+    old="$serial"
+    serial=""
+    adb disconnect "$old" >/dev/null 2>&1
+    try "$ip:5555" || { echo "Switched to port 5555 but couldn't reconnect yet; run again without --persist." >&2; exit 1; }
+fi
+echo "$serial"

@@ -1,0 +1,101 @@
+package com.mudita.mmd.samples.hermes
+
+import android.content.Intent
+import android.os.Bundle
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.mudita.mmd.ThemeMMD
+
+sealed interface Screen {
+    data object Sessions : Screen
+    data class Chat(
+        val sessionId: String,
+        val title: String,
+        val profileSlug: String,
+        val source: String = "",
+        // From a link: the message to open at.
+        val anchorMessageId: String? = null,
+    ) : Screen
+    data object Settings : Screen
+}
+
+class MainActivity : ComponentActivity() {
+    // A chat link to open (hermes://chat/<profile>/<session>[#<message>]), e.g. from an ntfy alert.
+    private var link by mutableStateOf<ChatLink?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        link = intent.dataString?.let(::parseChatLink)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) link = intent?.dataString?.let(::parseChatLink)
+        // Pick up profiles pushed by tools/import-profiles.py before reading the settings.
+        SettingsStore.importPendingProfiles(this)
+        MessageTextSize.load(this)
+        val start: Screen = when {
+            !SettingsStore.load(this).isHermesConfigured -> Screen.Settings
+            else -> Screen.Sessions
+        }
+        setContent {
+            ThemeMMD(typography = KompaktTypography) {
+                Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+                    App(start, link) { link = null }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun App(start: Screen, link: ChatLink?, onLinkHandled: () -> Unit) {
+    val context = LocalContext.current
+    var screen by remember { mutableStateOf(start) }
+    // Open a linked chat, but only on a profile this phone has a key for.
+    LaunchedEffect(link) {
+        val l = link ?: return@LaunchedEffect
+        val settings = SettingsStore.load(context)
+        if (settings.isHermesConfigured && settings.profiles.any { it.slug == l.profile }) {
+            screen = Screen.Chat(l.session, "", l.profile, anchorMessageId = l.message)
+        } else {
+            Log.w("Hermes", "Chat link for a profile that isn't set up here")
+        }
+        onLinkHandled()
+    }
+    BackHandler(enabled = screen != Screen.Sessions) { screen = Screen.Sessions }
+    when (val s = screen) {
+        Screen.Sessions -> SessionsScreen(
+            onOpen = { id, title, profile, source -> screen = Screen.Chat(id, title, profile, source) },
+            onSettings = { screen = Screen.Settings },
+        )
+        // Keyed by session, so a fork opened from a chat starts with fresh state.
+        is Screen.Chat -> key(s.profileSlug, s.sessionId) {
+            ChatScreen(
+                sessionId = s.sessionId,
+                title = s.title,
+                profileSlug = s.profileSlug,
+                source = s.source,
+                anchorMessageId = s.anchorMessageId,
+                onOpenSession = { id, title -> screen = Screen.Chat(id, title, s.profileSlug) },
+                onBack = { screen = Screen.Sessions },
+            )
+        }
+        Screen.Settings -> SettingsScreen(onDone = { screen = Screen.Sessions })
+    }
+}
