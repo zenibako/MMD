@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material.icons.filled.MoreVert
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
@@ -360,7 +362,10 @@ fun ChatScreen(
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     // What you were typing, kept across leaving the chat, sleep and alerts.
-    var draft by remember { mutableStateOf(SettingsStore.draft(context, modelKey)) }
+    var draft by remember {
+        val saved = SettingsStore.draft(context, modelKey)
+        mutableStateOf(TextFieldValue(saved, TextRange(saved.length)))
+    }
     var working by remember { mutableStateOf<String?>("Loading…") }
 
     // Explicit flags rather than the status text, which changes while a turn runs.
@@ -598,13 +603,40 @@ fun ChatScreen(
         }
     }
 
-    fun send() {
-        val text = draft.trim()
+    // @mentions route only in bot rooms and Bot Chat. Known handles: the phone's profiles and
+    // agents that wrote into this chat; a bot room also takes @all and @everyone.
+    val mentionChat = mentionsRoute(sessionSource, shownTitle.ifBlank { title })
+    val mentionCandidates = remember(mentionChat, messages.size) {
+        if (!mentionChat) {
+            emptyList()
+        } else {
+            val settings = SettingsStore.load(context)
+            val fromProfiles = profileCandidates(settings.profiles.map { it.slug to ProfileNames.label(settings.baseUrl, it) })
+            val seen = messages.mapNotNull { m -> m.senderHandle?.let { MentionCandidate(it, m.sender ?: it) } }
+            (fromProfiles + seen).distinctBy { it.handle.lowercase() }
+        }
+    }
+    val knownHandles = remember(mentionCandidates, sessionSource) {
+        mentionCandidates.map { it.handle }.toSet() + if (sessionSource == "bot_room") ROOM_WIDE_HANDLES else emptySet()
+    }
+    // A send held back because a mention names nobody here; Send anyway goes ahead.
+    var mentionWarning by remember { mutableStateOf<String?>(null) }
+
+    fun send(force: Boolean = false) {
+        val text = draft.text.trim()
         if (text.isEmpty() || !historyLoaded || sending) return
+        if (mentionChat && !force) {
+            val issues = unknownMentions(text, knownHandles)
+            if (issues.isNotEmpty()) {
+                mentionWarning = mentionNotice(issues)
+                return
+            }
+        }
+        mentionWarning = null
         // Close the keyboard so the reply has the whole screen.
         keyboard?.hide()
         focusManager.clearFocus()
-        draft = ""
+        draft = TextFieldValue("")
         SettingsStore.setDraft(context, modelKey, "")
         messages.add(ChatMessage("user", text, System.currentTimeMillis()))
         runTurn(text)
@@ -881,16 +913,38 @@ fun ChatScreen(
                 }
             }
         } else {
+            // Typing @… in a chat where mentions route: matching bots, tap to insert.
+            val query = if (mentionChat) activeMentionQuery(draft.text, draft.selection.end) else null
+            val suggestions = query?.let { mentionSuggestions(it.prefix, mentionCandidates) }.orEmpty()
+            if (query != null && suggestions.isNotEmpty()) {
+                MentionSuggestions(suggestions) { c ->
+                    val (text, cursor) = applyMention(draft.text, query, draft.selection.end, c.handle)
+                    draft = TextFieldValue(text, TextRange(cursor))
+                    SettingsStore.setDraft(context, modelKey, text)
+                    mentionWarning = null
+                }
+            }
+            mentionWarning?.let { warning ->
+                MentionWarningLine(warning, onSendAnyway = { send(force = true) }, onEdit = { mentionWarning = null })
+            }
             ComposeBar {
                 MessageField(
                     value = draft,
                     onValueChange = {
+                        if (it.text != draft.text) mentionWarning = null
                         draft = it
-                        SettingsStore.setDraft(context, modelKey, it)
+                        SettingsStore.setDraft(context, modelKey, it.text)
                     },
                     placeholder = "Message",
                     onSend = { send() },
                     modifier = Modifier.weight(1f),
+                    bold = { text ->
+                        if (!mentionChat) {
+                            emptyList()
+                        } else {
+                            mentionsIn(text).filter { (_, h) -> knownHandles.any { it.equals(h, ignoreCase = true) } }.map { it.first }
+                        }
+                    },
                 )
                 SendButton(onClick = { send() }, enabled = historyLoaded && !sending)
             }
@@ -1033,6 +1087,56 @@ private fun SmallOutlinedButton(label: String, onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             TextMMD(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/**
+ * Bots matching the @word being typed, above the compose bar: outlined 48 dp rows with the
+ * handle in Black and the name after it, at most four (from [mentionSuggestions]).
+ */
+@Composable
+private fun MentionSuggestions(suggestions: List<MentionCandidate>, onPick: (MentionCandidate) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        suggestions.forEach { c ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .border(2.dp, Color.Black, RoundedCornerShape(12.dp))
+                    .clickable(onClickLabel = "Mention ${c.name}") { onPick(c) }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextMMD("@${c.handle}", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                if (!c.name.equals(c.handle, ignoreCase = true)) {
+                    TextMMD(
+                        "  ${c.name}",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A held send: one line on what's wrong with a mention, then Edit and Send anyway. */
+@Composable
+private fun MentionWarningLine(text: String, onSendAnyway: () -> Unit, onEdit: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        TextMMD(text, style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.weight(1f)) { SheetButton("Edit") { onEdit() } }
+            Box(Modifier.weight(1f)) { SheetButton("Send anyway") { onSendAnyway() } }
         }
     }
 }

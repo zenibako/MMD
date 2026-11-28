@@ -48,7 +48,9 @@ fun historyEntries(
             "async_delegation_complete" -> parseDelegationResult(body)
             else -> null
         }
-        if (fromAgent != null) return listOf(ChatMessage(AGENT_ROLE, fromAgent.text, time, sender = fromAgent.sender))
+        if (fromAgent != null) {
+            return listOf(ChatMessage(AGENT_ROLE, fromAgent.text, time, sender = fromAgent.sender, senderHandle = fromAgent.handle))
+        }
     }
     if (kind !in PLAIN_DISPLAY_KINDS && r != "tool") {
         return listOfNotNull(body.takeIf { it.isNotEmpty() }?.let { ChatMessage(r, it, time, MessageKind.SYSTEM, label = kind) })

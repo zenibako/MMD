@@ -7,7 +7,7 @@ import org.junit.Test
 class StampedMessageTest {
     @Test fun stripsTheStampAndNamesTheSender() {
         assertEquals(
-            AgentMessage("Lead Dev", "Can you check the build?\nThanks"),
+            AgentMessage("Lead Dev", "Can you check the build?\nThanks", "lead-dev"),
             parseStampedMessage("Message from 🤖 Lead Dev (@lead-dev): Can you check the build?\nThanks"),
         )
     }
@@ -25,7 +25,7 @@ class AgentReplyTest {
 
     @Test fun deliveryReplyIsUnderTheAnsweringProfile() {
         val content = "[IMPORTANT: Background process proc_1 completed (exit code 0).\nCommand: $delivery\nOutput:\nAll green.\nNothing to do.]"
-        assertEquals(AgentMessage("System Admin", "All green.\nNothing to do."), parseAgentReply(content))
+        assertEquals(AgentMessage("System Admin", "All green.\nNothing to do.", "system-admin"), parseAgentReply(content))
     }
 
     @Test fun relayReplyDropsTheReplyFromLine() {

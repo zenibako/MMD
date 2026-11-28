@@ -62,6 +62,8 @@ data class ChatMessage(
     val sender: String? = null,
     /** Hermes's id for the message, for links to it; null for ones the app added itself. */
     val id: String? = null,
+    /** The @handle of [sender], when Hermes stamped one. */
+    val senderHandle: String? = null,
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */

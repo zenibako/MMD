@@ -4,7 +4,7 @@ package com.mudita.mmd.samples.hermes
  * A message another agent sent into this chat: shown as received, under [sender]'s name, with
  * Hermes's own framing (stamp, notification wrapper) removed from [text].
  */
-data class AgentMessage(val sender: String, val text: String)
+data class AgentMessage(val sender: String, val text: String, val handle: String? = null)
 
 /** Role used for [AgentMessage]s in the chat: received, like the agent's own replies. */
 const val AGENT_ROLE = "agent"
@@ -19,7 +19,7 @@ private val STAMP = Regex("""^Message from 🤖 (.+?) \(@([A-Za-z0-9_-]+)\): ?""
 fun parseStampedMessage(content: String): AgentMessage? {
     val m = STAMP.find(content.trimStart()) ?: return null
     val body = content.trimStart().substring(m.range.last + 1).trim()
-    return AgentMessage(m.groupValues[1].trim(), body)
+    return AgentMessage(m.groupValues[1].trim(), body, m.groupValues[2])
 }
 
 /** One finished background process (tools/process_registry_notifications.format_process_notification). */
@@ -42,9 +42,9 @@ fun parseAgentReply(content: String): AgentMessage? {
     if (!COMPLETED_HEAD.containsMatchIn(content)) return null
     val command = content.lineSequence().firstOrNull { it.startsWith("Command: ") }?.removePrefix("Command: ") ?: return null
     if ("bot_mode_dm" !in command) return null
+    val profile = if ("--run-delivery" in command) DELIVERY_PROFILE.findAll(command).lastOrNull()?.groupValues?.get(1) else null
     val sender = when {
-        "--run-delivery" in command ->
-            DELIVERY_PROFILE.findAll(command).lastOrNull()?.groupValues?.get(1)?.let { displayNameFor(it) }
+        "--run-delivery" in command -> profile?.let { displayNameFor(it) }
         "--wait-reply" in command ->
             WAIT_REPLY_LABEL.find(command)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
         else -> null
@@ -58,7 +58,7 @@ fun parseAgentReply(content: String): AgentMessage? {
     // A relay's waiter prints "Reply from <label>:" before the reply.
     body = body.removePrefix("Reply from $sender:").trim()
     if (body.isEmpty()) return null
-    return AgentMessage(sender, body)
+    return AgentMessage(sender, body, profile?.let { if (it == "default") "hermes" else it })
 }
 
 /**

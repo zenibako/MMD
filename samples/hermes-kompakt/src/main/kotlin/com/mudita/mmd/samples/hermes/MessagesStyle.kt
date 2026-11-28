@@ -47,6 +47,9 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
@@ -350,6 +353,46 @@ fun MessageField(
         decorationBox = { inner ->
             Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) TextMMD(placeholder, style = MaterialTheme.typography.bodyLarge)
+                inner()
+            }
+        },
+    )
+}
+
+/**
+ * [MessageField] on a [TextFieldValue], for callers that need the cursor (the @mention
+ * suggestions); [bold] ranges (known @handles) are drawn in Black.
+ */
+@Composable
+fun MessageField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+    bold: (String) -> List<IntRange> = { emptyList() },
+) {
+    val style = MaterialTheme.typography.bodyLarge.copy(color = Color.Black)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
+        textStyle = style,
+        maxLines = 4,
+        cursorBrush = SolidColor(Color.Black),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+        keyboardActions = KeyboardActions(onSend = { onSend() }),
+        visualTransformation = { text ->
+            val ranges = bold(text.text)
+            val styled = buildAnnotatedString {
+                append(text)
+                for (r in ranges) addStyle(SpanStyle(fontWeight = FontWeight.Black), r.first, r.last + 1)
+            }
+            TransformedText(styled, OffsetMapping.Identity)
+        },
+        decorationBox = { inner ->
+            Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.text.isEmpty()) TextMMD(placeholder, style = MaterialTheme.typography.bodyLarge)
                 inner()
             }
         },
