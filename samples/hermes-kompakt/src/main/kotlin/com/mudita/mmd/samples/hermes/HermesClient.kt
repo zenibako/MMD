@@ -60,6 +60,8 @@ data class ChatMessage(
     val footer: String? = null,
     /** For a message from another agent ([AGENT_ROLE]): its name, shown above the bubble. */
     val sender: String? = null,
+    /** Hermes's id for the message, for links to it; null for ones the app added itself. */
+    val id: String? = null,
 )
 
 /** One event from `POST /api/sessions/{id}/chat/stream`. */
@@ -68,7 +70,8 @@ sealed interface ChatEvent {
     data class Tool(val name: String, val phase: String, val detail: String = "") : ChatEvent
     /** [servedModel]: the model that actually answered (the run's runtime), if Hermes said. */
     data class Done(val finalText: String?, val servedModel: String? = null) : ChatEvent
-    data class Failed(val reason: String) : ChatEvent
+    /** [connectionLost]: the stream broke off, so Hermes may still have finished the reply. */
+    data class Failed(val reason: String, val connectionLost: Boolean = false) : ChatEvent
     /** The run is waiting for you to allow a tool call. */
     data class Approval(val request: ApprovalRequest) : ChatEvent
 }
@@ -186,6 +189,22 @@ class HermesClient(
         Unit
     }
 
+    /** The session's row from `GET /api/sessions/{id}` (title, source, model, model_config), or null. */
+    suspend fun session(sessionId: String): JSONObject? = withContext(Dispatchers.IO) {
+        runCatching { JSONObject(requestOk("GET", "/api/sessions/${enc(sessionId)}")).optJSONObject("session") }.getOrNull()
+    }
+
+    /** `GET /v1/capabilities`, or null if the gateway doesn't answer it. */
+    suspend fun capabilities(): JSONObject? = withContext(Dispatchers.IO) {
+        runCatching { JSONObject(requestOk("GET", "/v1/capabilities")) }.getOrNull()
+    }
+
+    /** Clears the session's model pin through [endpoint] (from [clearModelEndpoint]). */
+    suspend fun clearSessionModel(sessionId: String, endpoint: Pair<String, String>) = withContext(Dispatchers.IO) {
+        requestOk(endpoint.first, endpoint.second.replace("{session_id}", enc(sessionId)))
+        Unit
+    }
+
     /** The session's current title (Hermes names untitled sessions from the first message). */
     suspend fun sessionTitle(sessionId: String): String? = withContext(Dispatchers.IO) {
         runCatching {
@@ -223,7 +242,7 @@ class HermesClient(
                 toolName = o.str("tool_name", "name"),
                 toolCalls = toolCallNames(o.opt("tool_calls")),
                 displayKind = o.str("display_kind"),
-            )
+            ).map { it.copy(id = o.str("id").ifEmpty { null }) }
         }
     }
 
@@ -275,7 +294,7 @@ class HermesClient(
                         if (assembler.finished) return@use
                     }
                     // The stream ended without a terminal event, so the reply is incomplete.
-                    emit(ChatEvent.Failed("the connection closed before the reply finished"))
+                    emit(ChatEvent.Failed("the connection closed before the reply finished", connectionLost = true))
                 }
             } finally {
                 closer.cancel() // also disconnects

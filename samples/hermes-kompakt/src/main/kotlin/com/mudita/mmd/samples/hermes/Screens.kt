@@ -55,6 +55,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -313,37 +317,50 @@ fun ChatScreen(
     source: String,
     onOpenSession: (sessionId: String, title: String) -> Unit,
     onBack: () -> Unit,
+    // From a link: the message to open at instead of the newest.
+    anchorMessageId: String? = null,
 ) {
-    val readOnly = isReadOnlySession(source, title)
+    // A chat opened from a link starts without its source; the session row fills it in.
+    var sessionSource by remember { mutableStateOf(source) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Hermes names a new session from its first message; shown once it has.
     var shownTitle by remember { mutableStateOf(title) }
+    val readOnly = isReadOnlySession(sessionSource, shownTitle.ifBlank { title })
     val client = remember {
         val settings = SettingsStore.load(context)
         HermesClient(settings, settings.profile(profileSlug))
     }
     val profileName = client.profileLabel()
-    // The model picked for this session: locked on the server (see lockSessionModel) and
-    // remembered here per server, profile and session for display; null is the profile's
-    // default.
+    // The model picked for this session; null is the profile's default. Shown from what the
+    // gateway reports (its pin in GET /api/sessions/{id}), with the app's own record only as a
+    // first guess until that answer arrives. Keyed per server, profile and session, as are the
+    // draft and the reading position.
     val modelKey = remember { sessionModelKey(SettingsStore.load(context).baseUrl, profileSlug, sessionId) }
     var model by remember { mutableStateOf(SettingsStore.sessionModel(context, modelKey)) }
-    // A pick saved by an older build was never locked on the server: lock it once on open, and
-    // forget it if Hermes refuses, so the header never claims a model the chat isn't using.
-    LaunchedEffect(sessionId) {
-        model?.let { m ->
-            runCatching { client.lockSessionModel(sessionId, m) }.onFailure {
-                if (it is HermesApiException) {
-                    model = null
-                    SettingsStore.setSessionModel(context, modelKey, null)
-                }
-            }
+    var gatewayPinned by remember { mutableStateOf<ModelChoice?>(null) }
+    var gatewayChecked by remember { mutableStateOf(false) }
+    // How this gateway clears a pin (from /v1/capabilities); null: it can't (Hermes 0.23.4).
+    var clearEndpoint by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Re-reads the session row: its pin, and the source and title a linked chat starts without.
+    fun refreshSessionRow() {
+        scope.launch {
+            val row = client.session(sessionId) ?: return@launch
+            if (sessionSource.isBlank()) sessionSource = row.str("source")
+            if (shownTitle.isBlank()) row.str("title").takeIf { it.isNotBlank() }?.let { shownTitle = it }
+            gatewayPinned = gatewayPin(row)
+            gatewayChecked = true
         }
+    }
+    LaunchedEffect(sessionId) {
+        clearEndpoint = client.capabilities()?.let(::clearModelEndpoint)
+        refreshSessionRow()
     }
     LaunchedEffect(Unit) { client.profileName() }
     val messages = remember { mutableStateListOf<ChatMessage>() }
-    var draft by remember { mutableStateOf("") }
+    // What you were typing, kept across leaving the chat, sleep and alerts.
+    var draft by remember { mutableStateOf(SettingsStore.draft(context, modelKey)) }
     var working by remember { mutableStateOf<String?>("Loading…") }
 
     // Explicit flags rather than the status text, which changes while a turn runs.
@@ -416,6 +433,15 @@ fun ChatScreen(
         }
     }
     LaunchedEffect(Unit) { loadCatalog() }
+    // The gateway's pin wins over the app's record once both it and the profile default are known.
+    LaunchedEffect(gatewayChecked, gatewayPinned, catalog) {
+        if (!gatewayChecked) return@LaunchedEffect
+        val chosen = selectedModel(gatewayPinned, model, catalog?.second)
+        if (chosen != model) {
+            model = chosen
+            SettingsStore.setSessionModel(context, modelKey, chosen)
+        }
+    }
 
     fun openModelSheet() {
         modelSheet = true
@@ -460,6 +486,21 @@ fun ChatScreen(
                 approval = null
                 if (sending) working = "Working…"
             }
+        }
+    }
+
+    // After the connection dropped: if Hermes finished the reply anyway, show the history with
+    // it instead of a failure, so Retry never sends a message twice. Else the failure line.
+    suspend fun reconcileAfterDrop(text: String, reason: String) {
+        working = "Checking whether Hermes finished…"
+        val history = runCatching { client.messages(sessionId) }.getOrNull()
+        working = null
+        if (history != null && completedReplyAfter(history, text) != null) {
+            messages.clear()
+            messages.addAll(history)
+            failure = null
+        } else {
+            failure = text to reason
         }
     }
 
@@ -518,6 +559,7 @@ fun ChatScreen(
                                 approval = null
                                 approveSheet = false
                                 if (shownTitle.isBlank()) refreshTitle()
+                                refreshSessionRow()
                             }
                             is ChatEvent.Approval -> {
                                 approval = e.request
@@ -529,7 +571,11 @@ fun ChatScreen(
                                 working = null
                                 approval = null
                                 approveSheet = false
-                                failure = text to runFailureLine(e.reason)
+                                if (e.connectionLost) {
+                                    reconcileAfterDrop(text, runFailureLine(e.reason))
+                                } else {
+                                    failure = text to runFailureLine(e.reason)
+                                }
                             }
                         }
                     }
@@ -538,8 +584,13 @@ fun ChatScreen(
                     live = null
                     working = null
                     // A refused turn (e.g. 409 session_active_turn while another window is
-                    // answering) is a failure line with Retry like any other.
-                    failure = text to sendFailureLine(it)
+                    // answering) is a failure line with Retry like any other. A dropped
+                    // connection may have left a finished reply behind: check first.
+                    if (it is HermesApiException || it is ProfileUnknownException) {
+                        failure = text to sendFailureLine(it)
+                    } else {
+                        reconcileAfterDrop(text, sendFailureLine(it))
+                    }
                 }
             } finally {
                 sending = false
@@ -554,14 +605,28 @@ fun ChatScreen(
         keyboard?.hide()
         focusManager.clearFocus()
         draft = ""
+        SettingsStore.setDraft(context, modelKey, "")
         messages.add(ChatMessage("user", text, System.currentTimeMillis()))
         runTurn(text)
     }
 
-    // Sends the failed message again to this session; your message stays where it is.
+    // Sends the failed message again to this session; your message stays where it is. Checks
+    // the history first, in case the reply finished after all.
     fun retry() {
         val text = failure?.first ?: return
-        if (!sending) runTurn(text)
+        if (sending) return
+        sending = true
+        scope.launch {
+            val history = runCatching { client.messages(sessionId) }.getOrNull()
+            sending = false
+            if (history != null && completedReplyAfter(history, text) != null) {
+                messages.clear()
+                messages.addAll(history)
+                failure = null
+            } else {
+                runTurn(text)
+            }
+        }
     }
 
     var showTools by remember { mutableStateOf(SettingsStore.showToolMessages(context)) }
@@ -576,6 +641,24 @@ fun ChatScreen(
             modelSheet = false
             return
         }
+        // A gateway that can clear a pin goes back to inheriting the default.
+        val clear = clearEndpoint
+        if (choice == null && clear != null) {
+            modelSaving = true
+            lockError = null
+            scope.launch {
+                runCatching { client.clearSessionModel(sessionId, clear) }
+                    .onSuccess {
+                        model = null
+                        gatewayPinned = null
+                        SettingsStore.setSessionModel(context, modelKey, null)
+                        modelSheet = false
+                    }
+                    .onFailure { lockError = connectionError("Hermes didn't clear the model", it) }
+                modelSaving = false
+            }
+            return
+        }
         val target = lockTarget(choice, catalog?.second)
         if (target == null) {
             lockError = "Hermes didn't say which model is the profile's default."
@@ -587,6 +670,7 @@ fun ChatScreen(
             runCatching { client.lockSessionModel(sessionId, target) }
                 .onSuccess {
                     model = choice
+                    gatewayPinned = target
                     SettingsStore.setSessionModel(context, modelKey, choice)
                     modelSheet = false
                 }
@@ -623,7 +707,55 @@ fun ChatScreen(
         if (rowCount > 0) scope.launch { listState.scrollToItem(0) }
     }
 
+    // Remember where you were reading when the chat goes out of view (leaving it, sleep, an
+    // alert or another app on top); at the newest message there is nothing to keep.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentRowCount by rememberUpdatedState(rowCount)
+    val currentShowTools by rememberUpdatedState(showTools)
+    fun savePosition() {
+        if (!historyLoaded) return
+        val atBottom = followBottom || !listState.canScrollForward
+        SettingsStore.setReadingPosition(
+            context,
+            modelKey,
+            if (atBottom) {
+                null
+            } else {
+                ReadingPosition(
+                    listState.firstVisibleItemIndex,
+                    listState.firstVisibleItemScrollOffset,
+                    currentRowCount,
+                    messages.lastOrNull()?.time,
+                    currentShowTools,
+                )
+            },
+        )
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) savePosition()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            savePosition()
+        }
+    }
+
+    // Once the history is in: open at a linked message, else where you left off if the chat
+    // hasn't changed since, else (below) at the newest message.
+    var openPending by remember { mutableStateOf(true) }
     LaunchedEffect(rowCount, live?.length, showTools, historyLoaded) {
+        if (historyLoaded && openPending && rowCount > 0) {
+            openPending = false
+            val anchor = anchorMessageId?.let { id -> shown.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+            val restore = positionToRestore(SettingsStore.readingPosition(context, modelKey), rowCount, messages.lastOrNull()?.time, showTools)
+            if (anchor != null || restore != null) {
+                followBottom = false
+                if (anchor != null) listState.scrollToItem(anchor) else listState.scrollToItem(restore!!.index, restore.offset)
+                return@LaunchedEffect
+            }
+        }
         if (rowCount > 0 && followBottom && !listState.isScrollInProgress) {
             // Never move the list under the reader's finger: a reply that lands mid-scroll
             // waits. The offset is clamped, so this shows the end of the last item, not just its top.
@@ -752,7 +884,10 @@ fun ChatScreen(
             ComposeBar {
                 MessageField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = {
+                        draft = it
+                        SettingsStore.setDraft(context, modelKey, it)
+                    },
                     placeholder = "Message",
                     onSend = { send() },
                     modifier = Modifier.weight(1f),
@@ -799,6 +934,15 @@ fun ChatScreen(
                     "Profile default" + (c?.second?.let { " · ${it.model}" } ?: ""),
                     selected = isCurrentChoice(null, model),
                 ) { chooseModel(null) }
+                // Said before the tap: this gateway can only pin the default, not follow it.
+                if (clearEndpoint == null) {
+                    c?.second?.let {
+                        TextMMD(
+                            pinsDefaultNote(it.model),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
                 lockError?.let { TextMMD(it, style = MaterialTheme.typography.bodyLarge) }
                 if (modelSaving) TextMMD("Saving…", style = MaterialTheme.typography.bodyLarge)
                 when {

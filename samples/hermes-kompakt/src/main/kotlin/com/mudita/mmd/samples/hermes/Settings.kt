@@ -132,6 +132,26 @@ object SettingsStore {
     }
 
     /** The model chosen for one session (see [sessionModelKey]); null means the profile's default. */
+    /** The unsent text in a chat ([key] from [sessionModelKey]); "" if none. */
+    fun draft(context: Context, key: String): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("draft|$key", null).orEmpty()
+
+    fun setDraft(context: Context, key: String, text: String) {
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (text.isBlank()) edit.remove("draft|$key") else edit.putString("draft|$key", text)
+        edit.apply()
+    }
+
+    /** Where you were reading in a chat, or null for the newest message. */
+    fun readingPosition(context: Context, key: String): ReadingPosition? =
+        ReadingPosition.decode(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("position|$key", null))
+
+    fun setReadingPosition(context: Context, key: String, position: ReadingPosition?) {
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (position == null) edit.remove("position|$key") else edit.putString("position|$key", position.encode())
+        edit.apply()
+    }
+
     fun sessionModel(context: Context, key: String): ModelChoice? =
         ModelChoice.decode(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, null))
 
