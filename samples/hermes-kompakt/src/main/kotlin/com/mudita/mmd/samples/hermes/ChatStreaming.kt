@@ -83,3 +83,13 @@ fun answeredByLabel(served: String?, expected: String?): String? {
     fun bare(id: String) = id.substringAfterLast('/').lowercase()
     return if (bare(s) == bare(e)) null else "Answered by ${s.substringAfterLast('/')}"
 }
+
+/**
+ * The jump button under a chat: "New reply ↓" when something landed below while you read
+ * further up, "Latest ↓" when you've only scrolled up, nothing at the bottom.
+ */
+fun latestButtonLabel(atBottom: Boolean, unseenBelow: Boolean): String? = when {
+    atBottom -> null
+    unseenBelow -> "New reply ↓"
+    else -> "Latest ↓"
+}

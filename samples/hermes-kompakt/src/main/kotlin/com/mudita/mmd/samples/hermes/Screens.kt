@@ -607,6 +607,22 @@ fun ChatScreen(
     }
     // The list's rows: the messages, then the reply streaming in, then a failure line.
     val rowCount = shown.size + listOf(live, approval, approvalNote, failure).count { it != null }
+    // Something new landed below while you were reading further up.
+    var unseenBelow by remember { mutableStateOf(false) }
+    LaunchedEffect(followBottom) { if (followBottom) unseenBelow = false }
+    LaunchedEffect(rowCount, live?.length) { if (!followBottom && rowCount > 0) unseenBelow = true }
+
+    fun goToLatest() {
+        followBottom = true
+        unseenBelow = false
+        if (rowCount > 0) scope.launch { listState.scrollToItem(rowCount - 1, scrollOffset = Int.MAX_VALUE) }
+    }
+
+    fun goToStart() {
+        followBottom = false
+        if (rowCount > 0) scope.launch { listState.scrollToItem(0) }
+    }
+
     LaunchedEffect(rowCount, live?.length, showTools, historyLoaded) {
         if (rowCount > 0 && followBottom && !listState.isScrollInProgress) {
             // Never move the list under the reader's finger: a reply that lands mid-scroll
@@ -635,13 +651,15 @@ fun ChatScreen(
         val zone = java.time.ZoneId.systemDefault()
         val locale = java.util.Locale.getDefault()
         val dayNames = remember(today) { systemDayNames() }
-        // Scrolls like a Messages thread: follows the finger (scrollStep = 0), no scrollbar. The
-        // default (jump 4 items, aligned to an item's top) never shows the rest of a long reply.
+        // Scrolls like a Messages thread: follows the finger (scrollStep = 0); the default (jump 4
+        // items, aligned to an item's top) never shows the rest of a long reply. Once the chat is
+        // longer than the screen, the stock ▲/▼ column pages one screen per tap (long-press
+        // ▲ for the start), with the pill scrollbar between them.
         LazyColumnMMD(
             Modifier.weight(1f).fillMaxWidth(),
             state = listState,
             scrollStep = 0,
-            isScrollbarVisible = false,
+            isScrollbarVisible = true,
         ) {
             itemsIndexed(shown) { i, m ->
                 // Markers compare calendar days, not their labels.
@@ -688,6 +706,11 @@ fun ChatScreen(
             approvalNote?.let { note -> item(key = "approvalNote") { ToolSummaryLine(note) } }
             failure?.let { (_, line) ->
                 item(key = "failure") { FailureLine(line, retryEnabled = !sending) { retry() } }
+            }
+        }
+        latestButtonLabel(atBottom = followBottom || !listState.canScrollForward, unseenBelow = unseenBelow)?.let { label ->
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp), horizontalArrangement = Arrangement.End) {
+                SmallOutlinedButton(label) { goToLatest() }
             }
         }
         (forkStatus ?: working)?.let {
@@ -740,6 +763,14 @@ fun ChatScreen(
     }
         if (chatSheet) {
             KompaktSheet("Chat", onDismiss = { chatSheet = false }) {
+                SheetButton("Go to first message") {
+                    chatSheet = false
+                    goToStart()
+                }
+                SheetButton("Go to latest") {
+                    chatSheet = false
+                    goToLatest()
+                }
                 SheetButton("Model: ${model?.model ?: "Profile default"}") {
                     chatSheet = false
                     openModelSheet()
@@ -841,6 +872,27 @@ private fun ApprovalCard(request: ApprovalRequest, enabled: Boolean, onDeny: () 
     }
 }
 
+/** A small (36 dp) outlined button with 8 dp corners and a 21 sp Black label, as in the stock apps. */
+@Composable
+private fun SmallOutlinedButton(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .heightIn(min = 36.dp)
+                .border(2.dp, Color.Black, RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            TextMMD(label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
 /** "Used web_search, read_file": one small line between messages where the agent used tools. */
 @Composable
 private fun ToolSummaryLine(text: String) {
@@ -870,7 +922,7 @@ private fun EventLine(label: String, text: String) {
 
 /** A picker row: full-width outlined 48 dp button, label at the start, bold with a check when selected. */
 @Composable
-private fun ChoiceButton(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun ChoiceButton(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Row(
         Modifier
@@ -911,145 +963,6 @@ private fun SheetToggle(label: String, checked: Boolean, onChange: (Boolean) -> 
     }
 }
 
-@Composable
-fun SettingsScreen(onDone: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var s by remember { mutableStateOf(SettingsStore.load(context)) }
-    var status by remember { mutableStateOf("") }
-    // Bumped by every URL edit and Test tap, so a slow Test can't overwrite a newer result.
-    var testSeq by remember { mutableStateOf(0) }
-    var textSizeSheet by remember { mutableStateOf(false) }
-
-    Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize()) {
-        MessagesTopBar(label = "Hermes", title = "Settings")
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Field("Hermes URL", s.baseUrl) {
-                s = s.copy(baseUrl = it)
-                testSeq++
-            }
-            Field("API key (API_SERVER_KEY)", s.profiles.first().apiKey) { key ->
-                s = s.copy(profiles = listOf(s.profiles.first().copy(apiKey = key)) + s.profiles.drop(1))
-            }
-            SheetButton("Text size: ${MessageTextSize.current.label}") { textSizeSheet = true }
-            ProfilesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
-            DisplayNamesSection(s.baseUrl, s.profiles) { s = s.copy(profiles = it) }
-            if (status.isNotBlank()) TextMMD(status)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButtonMMD(onClick = {
-                    val seq = ++testSeq
-                    if (isCleartextUrl(s.baseUrl)) {
-                        status = CLEARTEXT_MESSAGE
-                    } else {
-                        val tested = s
-                        scope.launch {
-                            val result = HermesClient(tested).healthCheck()
-                            if (seq != testSeq) return@launch
-                            status = if (result == "OK") "Hermes is reachable." else "No answer from Hermes: $result"
-                        }
-                    }
-                }) { TextMMD("Test") }
-                ButtonMMD(onClick = {
-                    if (isCleartextUrl(s.baseUrl)) {
-                        status = CLEARTEXT_MESSAGE
-                    } else {
-                        SettingsStore.save(context, s)
-                        onDone()
-                    }
-                }) { TextMMD("Save") }
-            }
-        }
-    }
-        if (textSizeSheet) TextSizeSheet { textSizeSheet = false }
-    }
-}
-
-/**
- * "Text size: Default": opens a choice sheet (Small / Default / Large / Largest) that scales
- * message text. Applies at once, like the stock settings.
- */
-@Composable
-private fun TextSizeSheet(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    KompaktSheet("Text size", onDismiss = onDismiss) {
-        TextSize.entries.forEach { size ->
-            ChoiceButton(size.label, selected = size == MessageTextSize.current) {
-                MessageTextSize.set(context, size)
-                onDismiss()
-            }
-        }
-    }
-}
-
-/** Extra profiles reached under `/p/<slug>/`; the default profile's key is the field above. */
-@Composable
-private fun ProfilesSection(baseUrl: String, profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
-    var slug by remember { mutableStateOf("") }
-    var key by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-
-    TextMMD("Other profiles", style = MaterialTheme.typography.titleSmall)
-    profiles.drop(1).forEach { p ->
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextMMD(
-                "${ProfileNames.label(baseUrl, p)} · ${if (p.apiKey.isBlank()) "no key" else "key set"}",
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedButtonMMD(onClick = { onChange(profiles - p) }) { TextMMD("Remove") }
-        }
-    }
-    Field("Profile name (as on the server)", slug) { slug = it.trim().lowercase() }
-    Field("That profile's API key", key) { key = it }
-    if (error.isNotBlank()) TextMMD(error)
-    OutlinedButtonMMD(onClick = {
-        error = when {
-            !isValidProfileSlug(slug) -> "Use the profile's name: lowercase letters, digits, - or _."
-            profiles.any { it.slug == slug } -> "That profile is already added."
-            key.isBlank() -> "Enter that profile's API key."
-            else -> {
-                onChange(profiles + HermesProfile(slug, key.trim()))
-                slug = ""
-                key = ""
-                ""
-            }
-        }
-    }) { TextMMD("Add profile") }
-}
-
-/**
- * Optional custom names, one field per profile. A saved name wins over the one derived from
- * Hermes; leaving a field blank goes back to the derived name. Display only.
- */
-@Composable
-private fun DisplayNamesSection(baseUrl: String, profiles: List<HermesProfile>, onChange: (List<HermesProfile>) -> Unit) {
-    TextMMD("Display names", style = MaterialTheme.typography.titleSmall)
-    profiles.forEach { p ->
-        val derived = ProfileNames.derived(baseUrl, p.slug)
-        Field("${p.slug.ifEmpty { "default" }} (blank: $derived)", p.displayName) { name ->
-            onChange(profiles.map { if (it.slug == p.slug) it.copy(displayName = name) else it })
-        }
-    }
-}
-
-@Composable
-private fun Field(label: String, value: String, onChange: (String) -> Unit) {
-    TextFieldMMD(
-        value = value,
-        onValueChange = onChange,
-        label = { TextMMD(label) },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
 /** Hermes reports times as epoch seconds (e.g. `1.7954E9`); show those day-relative, else as given. */
 private fun formatUpdated(raw: String, today: java.time.LocalDate, use24h: Boolean): String =
     raw.toDoubleOrNull()?.let {
@@ -1078,7 +991,7 @@ fun connectionError(what: String, e: Throwable): String = when (e) {
  * renders as grey.
  */
 @Composable
-private fun KompaktSheet(
+internal fun KompaktSheet(
     title: String,
     onDismiss: () -> Unit,
     cancelLabel: String = "Cancel",
@@ -1120,7 +1033,7 @@ private fun KompaktSheet(
 
 /** A stock button: full width, 48 dp, 12 dp corners, 2 dp outline or filled black, 21 sp Black label. */
 @Composable
-private fun SheetButton(label: String, filled: Boolean = false, onClick: () -> Unit) {
+internal fun SheetButton(label: String, filled: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Box(
         Modifier
